@@ -53,12 +53,16 @@ export default function AuditLog({ relay, rep }) {
           setError("");
         }
 
+        const provider = relay.runner?.provider || rep.runner?.provider;
+        const currentBlock = provider ? await provider.getBlockNumber() : 0;
+        const fromBlock = Math.max(0, currentBlock - 3000);
+
         const all = [];
         for (const name of relayEventNames) {
           const filterFn = relay.filters[name];
           if (!filterFn) continue;
           const filter = filterFn();
-          const logs = await relay.queryFilter(filter, -3000);
+          const logs = await relay.queryFilter(filter, fromBlock);
           all.push(...normalize(name, logs, "relay"));
         }
 
@@ -66,7 +70,7 @@ export default function AuditLog({ relay, rep }) {
           const filterFn = rep.filters[name];
           if (!filterFn) continue;
           const filter = filterFn();
-          const logs = await rep.queryFilter(filter, -3000);
+          const logs = await rep.queryFilter(filter, fromBlock);
           all.push(...normalize(name, logs, "reputation"));
         }
 
