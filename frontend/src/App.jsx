@@ -19,32 +19,39 @@ export default function App() {
   const sharedProps = { wallet, relay, rep, tx, relayData };
 
   return (
-    <Layout wallet={wallet}>
+    <Layout wallet={wallet} relayData={relayData}>
+      {relayData.error && (
+        <div className="error-banner" role="status">
+          Donnees indisponibles: {relayData.error}
+          <button type="button" className="link-btn retry-btn" onClick={relayData.refresh}>
+            Reessayer
+          </button>
+        </div>
+      )}
+
       <Routes>
-        <Route path="/"         element={<Marketplace      {...sharedProps} />} />
-        <Route path="/sender"   element={<SenderDashboard  {...sharedProps} />} />
-        <Route path="/carrier"  element={<CarrierDashboard {...sharedProps} />} />
+        <Route path="/" element={<Marketplace      {...sharedProps} />} />
+        <Route path="/sender" element={<SenderDashboard  {...sharedProps} />} />
+        <Route path="/carrier" element={<CarrierDashboard {...sharedProps} />} />
         <Route path="/platform" element={<PlatformDashboard {...sharedProps} />} />
-        <Route path="/audit"    element={<AuditLog relay={relay} rep={rep} />} />
+        <Route path="/audit" element={<AuditLog relay={relay} rep={rep} />} />
       </Routes>
 
       <footer className="tx-footer">
         {tx.loading && (
           <span className="tx-loading">
             <span className="spinner" />
-            Transaction en cours...
+            Transaction en cours
           </span>
         )}
         {!tx.loading && tx.lastHash && (
           <>
-            <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Dernière tx :</span>
+            <span className="tx-meta">Derniere tx:</span>
             <span className="tx-hash">{tx.lastHash.slice(0, 20)}…</span>
           </>
         )}
-        {tx.error && <span className="error-text">⚠ {tx.error}</span>}
-        {!tx.loading && !tx.lastHash && !tx.error && (
-          <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>RelayChain v2.1 · Ethereum · Ganache Local</span>
-        )}
+        {tx.error && <span className="error-text" role="status">Erreur: {tx.error}</span>}
+
       </footer>
     </Layout>
   );

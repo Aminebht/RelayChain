@@ -32,3 +32,4 @@ deployments/localhost.json
 # Misc temp files
 *.tmp
 *.temp
+*.opencode

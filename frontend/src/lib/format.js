@@ -7,9 +7,24 @@ export function shortAddress(value) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-export function formatEth(wei) {
+export function formatEth(wei, options = {}) {
+  const { locale = "fr-FR", maximumFractionDigits = 4 } = options;
+
   try {
-    return `${Number(ethers.formatEther(wei)).toFixed(4)} ETH`;
+    const formatted = ethers.formatEther(wei);
+    const [rawInt, rawFrac = ""] = formatted.split(".");
+    const trimmedFrac = rawFrac.slice(0, maximumFractionDigits);
+    const roundedSource = trimmedFrac ? `${rawInt}.${trimmedFrac}` : rawInt;
+    const numeric = Number(roundedSource);
+    if (!Number.isFinite(numeric)) {
+      return "0 ETH";
+    }
+
+    const value = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits
+    }).format(numeric);
+    return `${value} ETH`;
   } catch {
     return "0 ETH";
   }
@@ -40,4 +55,13 @@ export function statusLabel(status) {
     6: "Rembourse"
   };
   return map[Number(status)] || `Inconnu(${status})`;
+}
+
+export function formatCount(value, locale = "fr-FR") {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat(locale).format(amount);
 }

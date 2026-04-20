@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { toWei, formatEth } from "../lib/format";
+import { formatCount, toWei, formatEth } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
 
 export default function Marketplace({ wallet, relay, tx, relayData }) {
@@ -8,6 +8,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [price, setPrice] = useState("0.1");
   const [payId, setPayId] = useState("");
   const [formError, setFormError] = useState("");
+  const [payError, setPayError] = useState("");
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
@@ -76,15 +77,30 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
 
   const handlePay = async (e) => {
     e.preventDefault();
-    if (!relay || !payId) return;
+    setPayError("");
+
+    if (!relay || !payId) {
+      setPayError("Contrat indisponible ou ID manquant.");
+      return;
+    }
+
+    if (!/^\d+$/.test(payId)) {
+      setPayError("ID invalide. Utilisez un entier positif.");
+      return;
+    }
 
     const target = relayData.parcels.find((p) => p.id === Number(payId));
-    if (!target) return;
+    if (!target) {
+      setPayError("Aucun colis trouve pour cet ID.");
+      return;
+    }
 
     const ok = await tx.runTx(relay.payForParcel(target.id, { value: target.price }));
     if (ok) {
       setPayId("");
       await relayData.refresh();
+    } else {
+      setPayError("Paiement echoue. Verifiez le montant et reessayez.");
     }
   };
 
@@ -94,102 +110,124 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
         <h1>Marché Public</h1>
         <p>Explorez les colis publiés et sécurisez votre achat sur la blockchain.</p>
       </div>
-
       <section className="grid two">
-        {/* Create Parcel Panel */}
+        <article className="panel span-all panel-priority">
+          <div className="panel-head">
+            <h2>Colis Disponibles</h2>
+            <div className="meta-note">
+              {formatCount(posted.length)} colis en attente d'expédition
+            </div>
+          </div>
+          {posted.length === 0 ? (
+            <div className="empty-state">
+              Aucun colis en attente. Soyez le premier à expédier un colis sur RelayChain !
+            </div>
+          ) : (
+            <ParcelTable parcels={posted} />
+          )}
+        </article>
+
         <article className="panel">
           <h2>Créer un Colis</h2>
           <p className="muted">Initialisez un colis avec son destinataire et sa valeur.</p>
           <form onSubmit={handlePost} className="form">
             <label>
               Destinataire
-              <input 
-                value={recipient} 
-                onChange={(e) => setRecipient(e.target.value)} 
-                placeholder="Ex: 0x123..." 
-                required 
-              />
-            </label>
-            <label>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Comptes Test Disponibles</span>
-                <span 
-                  onClick={loadAccounts} 
-                  style={{ color: "var(--brand)", cursor: "pointer", fontSize: "0.75rem" }}
-                >
-                  {loadingAccounts ? "🔄" : "Actualiser"}
-                </span>
-              </div>
-              <select
+              <input
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                disabled={!wallet.isConnected || loadingAccounts || !accounts.length}
-              >
-                <option value="">Sélectionner une adresse locale...</option>
-                {accounts.map((account) => (
-                  <option key={account} value={account}>{account}</option>
-                ))}
-              </select>
+                placeholder="Ex: 0x123..."
+                required
+              />
             </label>
-            
+
+            <details className="disclosure">
+              <summary>Utiliser un compte local</summary>
+              <div className="disclosure-body">
+                <button
+                  type="button"
+                  onClick={loadAccounts}
+                  className="link-btn"
+                >
+                  {loadingAccounts ? "Chargement..." : "Actualiser la liste"}
+                </button>
+                <label>
+                  Comptes locaux
+                  <select
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    disabled={!wallet.isConnected || loadingAccounts || !accounts.length}
+                  >
+                    <option value="">Sélectionner une adresse locale...</option>
+                    {accounts.slice(0, 50).map((account) => (
+                      <option key={account} value={account}>{account}</option>
+                    ))}
+                  </select>
+                </label>
+                {accounts.length > 50 && (
+                  <p className="muted disclosure-copy">
+                    Liste tronquee a 50 comptes pour eviter la surcharge d'affichage.
+                  </p>
+                )}
+              </div>
+            </details>
+
             <label>
               Prix (ETH)
-              <div style={{ position: "relative" }}>
-                <input 
+              <div className="input-with-suffix">
+                <input
                   type="text"
-                  value={price} 
-                  onChange={(e) => setPrice(e.target.value)} 
-                  required 
-                  style={{ paddingRight: "40px" }}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  required
                 />
-                <span style={{ 
-                  position: "absolute", right: "12px", top: "50%", 
-                  transform: "translateY(-50%)", color: "var(--text-muted)", 
-                  fontSize: "0.8rem", pointerEvents: "none" 
-                }}>ETH</span>
+                <span className="input-suffix">ETH</span>
               </div>
             </label>
 
-            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
-              📦 Publier le Colis
+            <button disabled={!wallet.isConnected || tx.loading}>
+              Publier le colis
             </button>
           </form>
-          {formError && <div className="error-banner" style={{ marginTop: "16px" }}>{formError}</div>}
+          {formError && <div className="error-banner error-banner-inline">{formError}</div>}
         </article>
 
-        {/* Pay Parcel Panel */}
         <article className="panel">
           <h2>Payer un Colis</h2>
-          <p className="muted">Sécurisez l'achat en bloquant les fonds dans l'Escrow.</p>
-          
-          <div className="info-box" style={{ marginBottom: "16px" }}>
-            <strong style={{ color: "var(--text-primary)" }}>{posted.length}</strong> colis en attente de paiement.
-          </div>
+          <p className="muted">
+            Sécurisez un colis publié en verrouillant la valeur.
+          </p>
 
           <form onSubmit={handlePay} className="form">
             <label>
               ID du Colis
-              <input 
-                value={payId} 
-                onChange={(e) => setPayId(e.target.value)} 
-                placeholder="Ex: 1" 
-                required 
+              <input
+                value={payId}
+                onChange={(e) => setPayId(e.target.value)}
+                placeholder="Ex: 1"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={12}
+                required
               />
             </label>
-            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
-              💳 Verrouiller les Fonds
+            <button disabled={!wallet.isConnected || tx.loading}>
+              Verrouiller les fonds
             </button>
           </form>
+          {payError && <div className="error-banner error-banner-inline">{payError}</div>}
         </article>
 
-        {/* Table Panel */}
         <article className="panel span-all">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h2 style={{ margin: 0 }}>Tous les Colis</h2>
-            <div className="status status-2" style={{ border: "none" }}>
-              Réserve Plateforme: {formatEth(relayData.platformReserve)}
+          <div className="panel-head">
+            <h2>Historique du Marché</h2>
+            <div className="meta-note">
+              Réserve Plateforme: {formatEth(relayData.platformReserve)} ETH
             </div>
           </div>
+          {relayData.loading && (
+            <p className="muted" role="status">Chargement des colis...</p>
+          )}
           <ParcelTable parcels={relayData.parcels} />
         </article>
       </section>

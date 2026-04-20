@@ -1,12 +1,9 @@
-import { formatEth, shortAddress, statusLabel } from "../lib/format";
-
-const STATUS_ICONS = ["📌","💳","🚚","⏳","✅","⚠️","↩️"];
+import { formatCount, formatEth, shortAddress, statusLabel } from "../lib/format";
 
 export default function ParcelTable({ parcels }) {
   if (!parcels || !parcels.length) {
     return (
       <div className="empty-state">
-        <span>📭</span>
         Aucun colis pour le moment.
       </div>
     );
@@ -14,6 +11,7 @@ export default function ParcelTable({ parcels }) {
 
   return (
     <div className="table-wrap">
+      <div className="table-meta">{formatCount(parcels.length)} elements</div>
       <table>
         <thead>
           <tr>
@@ -28,26 +26,18 @@ export default function ParcelTable({ parcels }) {
         <tbody>
           {parcels.map((p) => (
             <tr key={p.id}>
+              <td>#{p.id}</td>
+              <td>{shortAddress(p.sender)}</td>
+              <td>{shortAddress(p.recipient)}</td>
               <td>
-                <span className="mono">#{p.id}</span>
-              </td>
-              <td>
-                <span className="mono">{shortAddress(p.sender)}</span>
-              </td>
-              <td>
-                <span className="mono">{shortAddress(p.recipient)}</span>
-              </td>
-              <td style={{ color: "var(--brand)", fontWeight: 600 }}>
                 {formatEth(p.price)}
               </td>
               <td>
                 <span className={`status status-${p.status}`}>
-                  {STATUS_ICONS[p.status] ?? "?"} {statusLabel(p.status)}
+                  {statusLabel(p.status)}
                 </span>
               </td>
-              <td style={{ color: "var(--text-secondary)" }}>
-                Hop {p.currentHop}
-              </td>
+              <td>Hop {p.currentHop}</td>
             </tr>
           ))}
         </tbody>

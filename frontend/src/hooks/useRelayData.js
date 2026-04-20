@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useRelayData(relay, address) {
   const [parcels, setParcels] = useState([]);
@@ -6,14 +6,26 @@ export function useRelayData(relay, address) {
   const [pendingRefund, setPendingRefund] = useState(0n);
   const [owner, setOwner] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const requestRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+
     if (!relay) {
       setParcels([]);
+      setPlatformReserve(0n);
+      setPendingRefund(0n);
+      setOwner("");
+      setError("");
+      setLoading(false);
       return;
     }
 
     setLoading(true);
+    setError("");
+
     try {
       const count = Number(await relay.parcelCount());
       const list = [];
@@ -32,20 +44,35 @@ export function useRelayData(relay, address) {
         });
       }
 
+      if (requestRef.current !== requestId) {
+        return;
+      }
+
       setParcels(list.reverse());
       setPlatformReserve(await relay.platformReserve());
       setOwner(await relay.platformOwner());
 
       if (address) {
         setPendingRefund(await relay.pendingRefunds(address));
+      } else {
+        setPendingRefund(0n);
+      }
+    } catch (err) {
+      if (requestRef.current === requestId) {
+        setError((err?.shortMessage || err?.message || "Impossible de charger les donnees.").slice(0, 280));
       }
     } finally {
-      setLoading(false);
+      if (requestRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [relay, address]);
 
   useEffect(() => {
     refresh();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [refresh]);
 
   return {
@@ -54,6 +81,7 @@ export function useRelayData(relay, address) {
     pendingRefund,
     owner,
     loading,
+    error,
     refresh
   };
 }

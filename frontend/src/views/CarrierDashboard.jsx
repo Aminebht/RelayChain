@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ethers } from "ethers";
 import { parseHashInput, formatEth } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
 
@@ -11,6 +12,7 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
   const [ackHash, setAckHash] = useState("");
   const [points, setPoints] = useState(0n);
   const [available, setAvailable] = useState(0n);
+  const [actionError, setActionError] = useState("");
 
   const inPlay = useMemo(
     () => relayData.parcels.filter((p) => p.status === 1 || p.status === 2 || p.status === 3),
@@ -30,17 +32,41 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
 
   const acceptLeg = async (e) => {
     e.preventDefault();
-    if (!relay || !acceptId) return;
+    setActionError("");
+    if (!relay || !acceptId) {
+      setActionError("Contrat indisponible ou ID manquant.");
+      return;
+    }
+    if (!/^\d+$/.test(acceptId)) {
+      setActionError("ID invalide. Utilisez un entier positif.");
+      return;
+    }
+
     const ok = await tx.runTx(relay.acceptLeg(Number(acceptId)));
     if (ok) {
       setAcceptId("");
       await relayData.refresh();
+    } else {
+      setActionError("Impossible d'accepter ce troncon.");
     }
   };
 
   const initiate = async (e) => {
     e.preventDefault();
-    if (!relay || !handoffId || !incoming) return;
+    setActionError("");
+    if (!relay || !handoffId || !incoming) {
+      setActionError("Informations manquantes pour initier le handoff.");
+      return;
+    }
+    if (!/^\d+$/.test(handoffId)) {
+      setActionError("ID invalide. Utilisez un entier positif.");
+      return;
+    }
+    if (!ethers.isAddress(incoming)) {
+      setActionError("Adresse porteur entrante invalide.");
+      return;
+    }
+
     const hash = parseHashInput(initHash);
     const ok = await tx.runTx(relay.initiateHandoff(Number(handoffId), incoming, hash));
     if (ok) {
@@ -48,18 +74,31 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
       setIncoming("");
       setInitHash("");
       await relayData.refresh();
+    } else {
+      setActionError("Handoff refuse. Verifiez les valeurs saisies.");
     }
   };
 
   const acknowledge = async (e) => {
     e.preventDefault();
-    if (!relay || !ackId) return;
+    setActionError("");
+    if (!relay || !ackId) {
+      setActionError("Contrat indisponible ou ID manquant.");
+      return;
+    }
+    if (!/^\d+$/.test(ackId)) {
+      setActionError("ID invalide. Utilisez un entier positif.");
+      return;
+    }
+
     const hash = parseHashInput(ackHash);
     const ok = await tx.runTx(relay.acknowledgeHandoff(Number(ackId), hash));
     if (ok) {
       setAckId("");
       setAckHash("");
       await relayData.refresh();
+    } else {
+      setActionError("Confirmation de reception echouee.");
     }
   };
 
@@ -75,20 +114,9 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
       <section className="grid two">
         <article className="panel span-all">
           <h2>Mes Points de Réputation</h2>
-          <div className="stat-row">
-            <div className="stat-card">
-              <span className="stat-value" style={{ color: "var(--brand)" }}>{formatEth(points)}</span>
-              <span className="stat-label">Points Totaux</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value" style={{ color: "var(--accent-blue)" }}>{formatEth(available)}</span>
-              <span className="stat-label">Disponibles</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value" style={{ color: "var(--text-muted)" }}>{formatEth(locked)}</span>
-              <span className="stat-label">Verrouillés (Colis pris)</span>
-            </div>
-          </div>
+          <p className="muted">
+            Total {formatEth(points)} · disponibles {formatEth(available)} · verrouillés {formatEth(locked)}
+          </p>
         </article>
 
         <article className="panel">
@@ -96,61 +124,66 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
           <p className="muted">Bloquez vos points en garantie pour prendre un colis.</p>
           <form className="form" onSubmit={acceptLeg}>
             <label>
-              ID du Colis
-              <input value={acceptId} onChange={(e) => setAcceptId(e.target.value)} required />
-            </label>
-            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
-              🤝 Accepter la Mission
+                ID du Colis
+                <input value={acceptId} onChange={(e) => setAcceptId(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={12} required />
+              </label>
+            <button disabled={!wallet.isConnected || tx.loading}>
+              Accepter la mission
             </button>
           </form>
         </article>
 
-        <article className="panel">
+        <article className="panel panel-priority">
           <h2>2. Transmettre le Colis</h2>
           <p className="muted">Vous avez le colis. Scannez le porteur suivant et générez le hash.</p>
           <form className="form" onSubmit={initiate}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div className="form-row form-row-two">
               <label>
                 ID du Colis
-                <input value={handoffId} onChange={(e) => setHandoffId(e.target.value)} required />
-              </label>
-              <label>
-                Porteur Entrant (0x...)
-                <input value={incoming} onChange={(e) => setIncoming(e.target.value)} required />
-              </label>
+                    <input value={handoffId} onChange={(e) => setHandoffId(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={12} required />
+                  </label>
+                  <label>
+                    Porteur Entrant (0x...)
+                    <input value={incoming} onChange={(e) => setIncoming(e.target.value)} required />
+                  </label>
             </div>
             <label>
               Hash Photo (Preuve État)
               <input value={initHash} onChange={(e) => setInitHash(e.target.value)} placeholder="0x..." />
             </label>
-            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
-              📷 Initier Handoff
+            <button disabled={!wallet.isConnected || tx.loading}>
+              Initier handoff
             </button>
           </form>
-        </article>
 
-        <article className="panel span-all">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-            <div>
-              <h2>3. Recevoir le Colis</h2>
-              <p className="muted">Confirmez que vous avez bien vérifié l'état physique du colis et validez le transfert en approuvant le Hash ci-contre.</p>
+          <details className="disclosure">
+            <summary>Confirmer une reception</summary>
+            <div className="disclosure-body">
+              <p className="muted disclosure-copy">Validez le hash pour confirmer la reception.</p>
+              <form className="form" onSubmit={acknowledge}>
+                <div className="form-row form-row-2-3">
+                  <label>
+                    ID du Colis
+                    <input value={ackId} onChange={(e) => setAckId(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={12} required />
+                  </label>
+                  <label>
+                    Même Hash (Validé)
+                    <input value={ackHash} onChange={(e) => setAckHash(e.target.value)} placeholder="0x..." />
+                  </label>
+                </div>
+                <button disabled={!wallet.isConnected || tx.loading}>
+                  Confirmer la reception
+                </button>
+              </form>
             </div>
-            <form className="form" onSubmit={acknowledge}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "12px" }}>
-                <label>
-                  ID du Colis
-                  <input value={ackId} onChange={(e) => setAckId(e.target.value)} required />
-                </label>
-                <label>
-                  Même Hash (Validé)
-                  <input value={ackHash} onChange={(e) => setAckHash(e.target.value)} placeholder="0x..." />
-                </label>
-              </div>
-              <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
-                ✅ Confirmer la Réception
-              </button>
-            </form>
-          </div>
+          </details>
+
+          {actionError && <div className="error-banner error-banner-inline">{actionError}</div>}
+          {!wallet.isConnected && (
+            <div className="error-banner error-banner-inline" role="status">
+              Connectez votre wallet pour executer ces actions.
+            </div>
+          )}
         </article>
 
         <article className="panel span-all">
