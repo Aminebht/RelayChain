@@ -62,9 +62,9 @@ export default function AuditLog({ relay, rep }) {
 
   return (
     <section className="panel">
-      <h2>Audit Log</h2>
-      <p className="muted">Public immutable history from RelayEscrow and CarrierReputation.</p>
-      {!events.length && <p className="muted">No events found yet.</p>}
+      <h2>Journal d'audit</h2>
+      <p className="muted">Historique public immuable de RelayEscrow et CarrierReputation.</p>
+      {!events.length && <p className="muted">Aucun evenement trouve pour le moment.</p>}
       <div className="log-list">
         {events.map((evt) => (
           <div className="log-item" key={evt.id}>

@@ -35,8 +35,8 @@ export default function App() {
       </Routes>
 
       <footer className="tx-footer">
-        {tx.loading && <span>Transaction pending...</span>}
-        {!tx.loading && tx.lastHash && <span>Last tx: {tx.lastHash}</span>}
+        {tx.loading && <span>Transaction en attente...</span>}
+        {!tx.loading && tx.lastHash && <span>Derniere tx : {tx.lastHash}</span>}
         {tx.error && <span className="error-text">{tx.error}</span>}
       </footer>
     </Layout>

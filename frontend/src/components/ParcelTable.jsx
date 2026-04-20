@@ -2,7 +2,7 @@ import { formatEth, shortAddress, statusLabel } from "../lib/format";
 
 export default function ParcelTable({ parcels }) {
   if (!parcels.length) {
-    return <p className="muted">No parcels yet.</p>;
+    return <p className="muted">Aucun colis pour le moment.</p>;
   }
 
   return (
@@ -11,11 +11,11 @@ export default function ParcelTable({ parcels }) {
         <thead>
           <tr>
             <th>ID</th>
-            <th>Sender</th>
-            <th>Recipient</th>
-            <th>Price</th>
-            <th>Status</th>
-            <th>Hop</th>
+            <th>Expediteur</th>
+            <th>Destinataire</th>
+            <th>Prix</th>
+            <th>Statut</th>
+            <th>Troncon</th>
           </tr>
         </thead>
         <tbody>

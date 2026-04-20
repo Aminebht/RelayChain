@@ -29,25 +29,25 @@ export default function SenderDashboard({ wallet, relay, tx, relayData }) {
   return (
     <section className="grid two">
       <article className="panel">
-        <h2>Sender Summary</h2>
-        <p className="muted">Parcels posted: {mine.length}</p>
-        <p className="muted">Pending refund debt: {formatEth(relayData.pendingRefund)}</p>
+        <h2>Resume expediteur</h2>
+        <p className="muted">Colis publies : {mine.length}</p>
+        <p className="muted">Dette de remboursement en attente : {formatEth(relayData.pendingRefund)}</p>
       </article>
 
       <article className="panel">
-        <h2>Open Dispute</h2>
-        <p className="muted">Recipient opens dispute on-chain in v2.1; this is useful when sender is recipient in tests/demo accounts.</p>
+        <h2>Ouvrir un litige</h2>
+        <p className="muted">En v2.1, le litige est ouvert par le destinataire on-chain ; utile si expediteur et destinataire sont le meme compte en demo.</p>
         <form onSubmit={handleOpenDispute} className="form">
           <label>
-            Parcel ID
+            ID du colis
             <input value={disputeId} onChange={(e) => setDisputeId(e.target.value)} required />
           </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Open Dispute</button>
+          <button disabled={!wallet.isConnected || tx.loading}>Ouvrir le litige</button>
         </form>
       </article>
 
       <article className="panel span-all">
-        <h2>My Parcels</h2>
+        <h2>Mes colis</h2>
         <ParcelTable parcels={mine} />
       </article>
     </section>

@@ -2,11 +2,11 @@ import { Link, NavLink } from "react-router-dom";
 import { shortAddress } from "../lib/format";
 
 const links = [
-  { to: "/", label: "Marketplace" },
-  { to: "/sender", label: "Sender" },
-  { to: "/carrier", label: "Carrier" },
-  { to: "/platform", label: "Platform" },
-  { to: "/audit", label: "Audit" }
+  { to: "/", label: "Marche" },
+  { to: "/sender", label: "Expediteur" },
+  { to: "/carrier", label: "Porteur" },
+  { to: "/platform", label: "Plateforme" },
+  { to: "/audit", label: "Journal" }
 ];
 
 export default function Layout({ children, wallet }) {
@@ -26,7 +26,7 @@ export default function Layout({ children, wallet }) {
           ))}
         </nav>
         <button className="connect-btn" onClick={wallet.connect}>
-          {wallet.isConnected ? shortAddress(wallet.address) : "Connect"}
+          {wallet.isConnected ? shortAddress(wallet.address) : "Connecter"}
         </button>
       </header>
       <main className="main">{children}</main>

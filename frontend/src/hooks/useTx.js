@@ -14,7 +14,7 @@ export function useTx() {
       await tx.wait();
       return true;
     } catch (err) {
-      setError(err.shortMessage || err.message || "Transaction failed");
+      setError(err.shortMessage || err.message || "Echec de la transaction");
       return false;
     } finally {
       setLoading(false);

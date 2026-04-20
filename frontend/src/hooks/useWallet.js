@@ -12,7 +12,7 @@ export function useWallet() {
     try {
       setError("");
       if (!window.ethereum) {
-        throw new Error("MetaMask is not available");
+        throw new Error("MetaMask n'est pas disponible");
       }
 
       const browserProvider = new ethers.BrowserProvider(window.ethereum);
@@ -25,7 +25,7 @@ export function useWallet() {
       setAddress(await nextSigner.getAddress());
       setChainId(Number(network.chainId));
     } catch (err) {
-      setError(err.message || "Failed to connect wallet");
+      setError(err.message || "Echec de connexion du wallet");
     }
   }, []);
 

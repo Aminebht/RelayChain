@@ -74,59 +74,59 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
   return (
     <section className="grid two">
       <article className="panel">
-        <h2>Carrier Points</h2>
-        <p className="muted">Total points: {formatEth(points)}</p>
-        <p className="muted">Available points: {formatEth(available)}</p>
-        <p className="muted">Locked points: {formatEth(points > available ? points - available : 0n)}</p>
+        <h2>Points porteur</h2>
+        <p className="muted">Points totaux : {formatEth(points)}</p>
+        <p className="muted">Points disponibles : {formatEth(available)}</p>
+        <p className="muted">Points verrouilles : {formatEth(points > available ? points - available : 0n)}</p>
       </article>
 
       <article className="panel">
-        <h2>Accept Leg</h2>
+        <h2>Accepter un troncon</h2>
         <form className="form" onSubmit={acceptLeg}>
           <label>
-            Parcel ID
+            ID du colis
             <input value={acceptId} onChange={(e) => setAcceptId(e.target.value)} required />
           </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Accept</button>
+          <button disabled={!wallet.isConnected || tx.loading}>Accepter</button>
         </form>
       </article>
 
       <article className="panel">
-        <h2>Initiate Handoff</h2>
+        <h2>Initier le handoff</h2>
         <form className="form" onSubmit={initiate}>
           <label>
-            Parcel ID
+            ID du colis
             <input value={handoffId} onChange={(e) => setHandoffId(e.target.value)} required />
           </label>
           <label>
-            Expected incoming
+            Porteur entrant attendu
             <input value={incoming} onChange={(e) => setIncoming(e.target.value)} placeholder="0x..." required />
           </label>
           <label>
-            Photo hash (or text)
+            Hash photo (ou texte)
             <input value={initHash} onChange={(e) => setInitHash(e.target.value)} />
           </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Initiate</button>
+          <button disabled={!wallet.isConnected || tx.loading}>Initier</button>
         </form>
       </article>
 
       <article className="panel">
-        <h2>Acknowledge Handoff</h2>
+        <h2>Confirmer le handoff</h2>
         <form className="form" onSubmit={acknowledge}>
           <label>
-            Parcel ID
+            ID du colis
             <input value={ackId} onChange={(e) => setAckId(e.target.value)} required />
           </label>
           <label>
-            Same photo hash
+            Meme hash photo
             <input value={ackHash} onChange={(e) => setAckHash(e.target.value)} />
           </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Acknowledge</button>
+          <button disabled={!wallet.isConnected || tx.loading}>Confirmer</button>
         </form>
       </article>
 
       <article className="panel span-all">
-        <h2>Active Parcels</h2>
+        <h2>Colis actifs</h2>
         <ParcelTable parcels={inPlay} />
       </article>
     </section>

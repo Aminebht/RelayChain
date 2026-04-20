@@ -31,13 +31,13 @@ export function parseHashInput(input) {
 
 export function statusLabel(status) {
   const map = {
-    0: "Posted",
-    1: "Paid",
-    2: "InTransit",
-    3: "AwaitingNextCarrier",
-    4: "Delivered",
-    5: "Disputed",
-    6: "Refunded"
+    0: "Publie",
+    1: "Paye",
+    2: "En transit",
+    3: "En attente porteur suivant",
+    4: "Livre",
+    5: "En litige",
+    6: "Rembourse"
   };
-  return map[Number(status)] || `Unknown(${status})`;
+  return map[Number(status)] || `Inconnu(${status})`;
 }

@@ -54,8 +54,8 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
   if (!isOwner) {
     return (
       <section className="panel">
-        <h2>Platform Dashboard</h2>
-        <p className="muted">Only platform owner can execute reserve/dispute admin actions.</p>
+        <h2>Tableau de bord plateforme</h2>
+        <p className="muted">Seul le proprietaire de la plateforme peut executer les actions admin reserve/litige.</p>
       </section>
     );
   }
@@ -64,31 +64,31 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
     <section className="grid two">
       <article className="panel">
         <h2>Reserve</h2>
-        <p className="muted">Current reserve: {formatEth(relayData.platformReserve)}</p>
+        <p className="muted">Reserve actuelle : {formatEth(relayData.platformReserve)}</p>
         <form className="form" onSubmit={handleTopUp}>
           <label>
-            Top-up ETH
+            Recharger en ETH
             <input value={topUp} onChange={(e) => setTopUp(e.target.value)} required />
           </label>
-          <button disabled={tx.loading}>Top Up</button>
+          <button disabled={tx.loading}>Recharger</button>
         </form>
       </article>
 
       <article className="panel">
-        <h2>Resolve Dispute</h2>
+        <h2>Resoudre un litige</h2>
         <form className="form" onSubmit={handleResolve}>
           <label>
-            Parcel ID
+            ID du colis
             <input value={resolveParcel} onChange={(e) => setResolveParcel(e.target.value)} required />
           </label>
           <label>
-            Faulty hop
+            Troncon fautif
             <input value={faultyHop} onChange={(e) => setFaultyHop(e.target.value)} required />
           </label>
-          <button disabled={tx.loading}>Resolve</button>
+          <button disabled={tx.loading}>Resoudre</button>
         </form>
-        <p className="muted">Disputed parcels: {disputed.length}</p>
-        <p className="muted">My monthly disputes (read): {monthCount.toString()}</p>
+        <p className="muted">Colis en litige : {disputed.length}</p>
+        <p className="muted">Mes litiges mensuels (lecture) : {monthCount.toString()}</p>
       </article>
     </section>
   );

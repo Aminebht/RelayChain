@@ -1022,15 +1022,3 @@ event TimeoutTriggered(uint256 parcelId, string timeoutType, address penalized);
 | Compteur litiges mois suivant | Reset naturel via `monthIndex` |
 | Paiements ETH | `call` reussi + garde `nonReentrant` |
 
-### 12.9 Limites connues (v2.1)
-
-- Arbitrage humain encore present en v1 (owner), remplaceable par DAO en v2.
-- Hash photo reste une preuve faible sans pipeline d'attestation forte (EIP-712 + metadonnees + IPFS pinning strict).
-- Volatilite ETH persiste tant que stablecoin non integre.
-
-### 12.10 Roadmap v2.2 recommandee
-
-1. Preuve forte de handoff (signature EIP-712 des 2 parties + CID IPFS obligatoire).
-2. Gouvernance litige par jurys de porteurs Expert (DAO).
-3. Migration Layer 2 (Polygon/Optimism) + stablecoin.
-4. Mecanisme anti-Sybil avance (soulbound identity score + device/risk signals).
