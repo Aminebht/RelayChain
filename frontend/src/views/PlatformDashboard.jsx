@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEth } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
 
-export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
+export default function PlatformDashboard({ wallet, relay, rep, tx, relayData }) {
   const [topUp, setTopUp] = useState("1");
   const [resolveParcel, setResolveParcel] = useState("");
   const [faultyHop, setFaultyHop] = useState("0");
   const [monthCount, setMonthCount] = useState(0n);
+  const [onboardAddress, setOnboardAddress] = useState("");
 
   const monthIndex = Math.floor(Date.now() / 1000 / (28 * 24 * 60 * 60)); // v2.1 = 4 weeks sync
   const disputed = useMemo(
@@ -48,6 +49,16 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
       setResolveParcel("");
       setFaultyHop("0");
       await relayData.refresh();
+    }
+  };
+
+  const handleOnboard = async (e) => {
+    e.preventDefault();
+    if (!rep || !onboardAddress) return;
+    const ok = await tx.runTx(rep.onboardCarrier(onboardAddress));
+    if (ok) {
+        setOnboardAddress("");
+        await relayData.refresh();
     }
   };
 
@@ -116,6 +127,20 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
             </div>
             <button className="btn-danger" disabled={tx.loading} style={{ marginTop: "8px" }}>
               ⚖️ Rendre le Verdict Arbitral
+            </button>
+          </form>
+        </article>
+
+        <article className="panel">
+          <h2>Onboarder un Porteur (Test)</h2>
+          <p className="muted">Donne 10 points de départ à un porteur pour lui permettre de commencer à travailler.</p>
+          <form className="form" onSubmit={handleOnboard}>
+            <label>
+              Adresse du porteur
+              <input value={onboardAddress} onChange={(e) => setOnboardAddress(e.target.value)} required placeholder="Ex: 0x123..." />
+            </label>
+            <button disabled={tx.loading} style={{ marginTop: "8px" }}>
+              🚀 Créditer 10 Points
             </button>
           </form>
         </article>
