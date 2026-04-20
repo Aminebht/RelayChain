@@ -19,7 +19,7 @@ describe("RelayEscrow v2.1", function () {
   }
 
   async function createAndPayParcel(relay, sender, recipient, price) {
-    await relay.connect(sender).postParcel(recipient.address, price);
+    await relay.connect(sender).postParcel(recipient.address, price, "pickup", "dropoff");
     const parcelId = await relay.parcelCount();
     await relay.connect(recipient).payForParcel(parcelId, { value: price });
     return parcelId;
@@ -29,25 +29,7 @@ describe("RelayEscrow v2.1", function () {
     await reputation.connect(owner).onboardCarrier(carrier.address);
   }
 
-  it("rejects unauthorized incoming during acknowledgeHandoff", async function () {
-    const { relay, reputation, owner, sender, recipient, carrierA, carrierB, outsider } = await deployFixture();
-    const price = ethers.parseEther("6");
-
-    await onboard(reputation, owner, carrierA);
-    await onboard(reputation, owner, carrierB);
-
-    const parcelId = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(parcelId);
-
-    const hash = ethers.id("handoff-1");
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, hash);
-
-    await expect(
-      relay.connect(outsider).acknowledgeHandoff(parcelId, hash)
-    ).to.be.revertedWith("Incoming non autorise");
-  });
-
-  it("reverts when outgoing and incoming hashes diverge", async function () {
+  it("locks parcel to a single carrier once accepted", async function () {
     const { relay, reputation, owner, sender, recipient, carrierA, carrierB } = await deployFixture();
     const price = ethers.parseEther("6");
 
@@ -55,35 +37,32 @@ describe("RelayEscrow v2.1", function () {
     await onboard(reputation, owner, carrierB);
 
     const parcelId = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(parcelId);
+    await expect(relay.connect(carrierA).acceptParcel(parcelId))
+      .to.emit(relay, "ParcelAccepted")
+      .withArgs(parcelId, carrierA.address);
 
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, ethers.id("hash-a"));
+    const parcel = await relay.parcels(parcelId);
+    expect(parcel.carrier).to.equal(carrierA.address);
+    expect(parcel.status).to.equal(2);
 
-    await expect(
-      relay.connect(carrierB).acknowledgeHandoff(parcelId, ethers.id("hash-b"))
-    ).to.be.revertedWith("Hashes divergents");
+    await expect(relay.connect(carrierB).acceptParcel(parcelId)).to.be.revertedWith("Deja pris");
   });
 
   it("finalizes only via confirmDelivery and releases payment with fee", async function () {
-    const { relay, reputation, owner, sender, recipient, carrierA, carrierB, outsider } = await deployFixture();
+    const { relay, reputation, owner, sender, recipient, carrierA, outsider } = await deployFixture();
     const price = ethers.parseEther("10");
 
     await onboard(reputation, owner, carrierA);
-    await onboard(reputation, owner, carrierB);
 
     const parcelId = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(parcelId);
-
-    const hash = ethers.id("handoff-final");
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, hash);
-    await relay.connect(carrierB).acknowledgeHandoff(parcelId, hash);
+    await relay.connect(carrierA).acceptParcel(parcelId);
 
     await expect(relay.connect(outsider).confirmDelivery(parcelId)).to.be.revertedWith("Seul destinataire");
 
     await expect(relay.connect(recipient).confirmDelivery(parcelId)).to.not.be.reverted;
 
     const parcel = await relay.parcels(parcelId);
-    expect(parcel.status).to.equal(4);
+    expect(parcel.status).to.equal(3);
     expect(await relay.platformReserve()).to.equal((price * 5n) / 100n);
   });
 
@@ -94,10 +73,10 @@ describe("RelayEscrow v2.1", function () {
     await onboard(reputation, owner, carrierA);
     const parcelId = await createAndPayParcel(relay, sender, recipient, price);
 
-    await relay.connect(carrierA).acceptLeg(parcelId);
+    await relay.connect(carrierA).acceptParcel(parcelId);
     await relay.connect(recipient).openDispute(parcelId);
 
-    await expect(relay.connect(owner).resolveDispute(parcelId, 0))
+    await expect(relay.connect(owner).resolveDispute(parcelId))
       .to.emit(relay, "PartialRefund");
 
     expect(await relay.pendingRefunds(sender.address)).to.equal(price);
@@ -112,92 +91,44 @@ describe("RelayEscrow v2.1", function () {
     expect(await relay.pendingRefunds(sender.address)).to.equal(0n);
   });
 
-  it("triggers handoff timeout with penalty and outgoing unlock", async function () {
-    const { relay, reputation, owner, sender, recipient, carrierA, carrierB } = await deployFixture();
-    const price = ethers.parseEther("10");
-
-    await onboard(reputation, owner, carrierA);
-    await onboard(reputation, owner, carrierB);
-
-    const startPoints = await reputation.getPoints(carrierA.address);
-    const parcelId = await createAndPayParcel(relay, sender, recipient, price);
-
-    await relay.connect(carrierA).acceptLeg(parcelId);
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(price);
-
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, ethers.id("timeout-handoff"));
-
-    await ethers.provider.send("evm_increaseTime", [2 * 60 * 60 + 1]);
-    await ethers.provider.send("evm_mine", []);
-
-    await expect(relay.connect(carrierB).triggerTimeout(parcelId))
-      .to.emit(relay, "TimeoutTriggered");
-
-    const parcel = await relay.parcels(parcelId);
-    expect(parcel.status).to.equal(3);
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(0n);
-
-    const endPoints = await reputation.getPoints(carrierA.address);
-    expect(endPoints).to.equal(startPoints - price / 20n);
-  });
-
   it("naturally resets monthly dispute limit with monthIndex", async function () {
     const { relay, reputation, owner, sender, recipient, carrierA } = await deployFixture();
-    const price = ethers.parseEther("4");
+    const price = ethers.parseEther("0.001");
 
     await onboard(reputation, owner, carrierA);
 
     for (let i = 0; i < 3; i += 1) {
       const id = await createAndPayParcel(relay, sender, recipient, price);
-      await relay.connect(carrierA).acceptLeg(id);
+      await relay.connect(carrierA).acceptParcel(id);
       await relay.connect(recipient).openDispute(id);
     }
 
     const id4 = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(id4);
+    await relay.connect(carrierA).acceptParcel(id4);
     await expect(relay.connect(recipient).openDispute(id4)).to.be.revertedWith("Limite mensuelle atteinte");
 
     await ethers.provider.send("evm_increaseTime", [31 * 24 * 60 * 60]);
     await ethers.provider.send("evm_mine", []);
 
     const id5 = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(id5);
+    await relay.connect(carrierA).acceptParcel(id5);
     await expect(relay.connect(recipient).openDispute(id5)).to.not.be.reverted;
   });
 
-  it("releases locks correctly when same carrier handles multiple hops", async function () {
-    const { relay, reputation, owner, sender, recipient, carrierA, carrierB } = await deployFixture();
-    const price = ethers.parseEther("6");
+  it("allows recipient to open dispute in Paid only after accept timeout", async function () {
+    const { relay, sender, recipient } = await deployFixture();
+    const price = ethers.parseEther("1");
 
-    await onboard(reputation, owner, carrierA);
-    await onboard(reputation, owner, carrierB);
+    await relay.connect(sender).postParcel(recipient.address, price, "pickup", "dropoff");
+    const parcelId = await relay.parcelCount();
+    await relay.connect(recipient).payForParcel(parcelId, { value: price });
 
-    const parcelId = await createAndPayParcel(relay, sender, recipient, price);
+    await expect(relay.connect(recipient).openDispute(parcelId)).to.be.revertedWith("Delai acceptation non atteint");
 
-    await relay.connect(carrierA).acceptLeg(parcelId);
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(price);
-    expect(await relay.totalLockedByCarrier(carrierA.address)).to.equal(price);
+    await ethers.provider.send("evm_increaseTime", [24 * 60 * 60 + 2]);
+    await ethers.provider.send("evm_mine", []);
 
-    const h1 = ethers.id("loop-1");
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, h1);
-    await relay.connect(carrierB).acknowledgeHandoff(parcelId, h1);
-
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(0n);
-    expect(await relay.totalLockedByCarrier(carrierA.address)).to.equal(0n);
-    expect(await relay.lockedByParcel(parcelId, carrierB.address)).to.equal(0n);
-
-    await relay.connect(carrierA).acceptLeg(parcelId);
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(price);
-    expect(await relay.totalLockedByCarrier(carrierA.address)).to.equal(price);
-
-    const h2 = ethers.id("loop-2");
-    await relay.connect(carrierA).initiateHandoff(parcelId, carrierB.address, h2);
-    await relay.connect(carrierB).acknowledgeHandoff(parcelId, h2);
-
-    await relay.connect(recipient).confirmDelivery(parcelId);
-
-    expect(await relay.lockedByParcel(parcelId, carrierA.address)).to.equal(0n);
-    expect(await relay.totalLockedByCarrier(carrierA.address)).to.equal(0n);
+    await expect(relay.connect(recipient).openDispute(parcelId)).to.not.be.reverted;
   });
 
   it("handles dispute timeout with partial reserve and sender debt", async function () {
@@ -208,7 +139,7 @@ describe("RelayEscrow v2.1", function () {
     await onboard(reputation, owner, carrierA);
 
     const parcelId = await createAndPayParcel(relay, sender, recipient, price);
-    await relay.connect(carrierA).acceptLeg(parcelId);
+    await relay.connect(carrierA).acceptParcel(parcelId);
     await relay.connect(owner).topUpReserve({ value: reserveTopUp });
     await relay.connect(recipient).openDispute(parcelId);
 
@@ -219,7 +150,7 @@ describe("RelayEscrow v2.1", function () {
       .to.emit(relay, "PartialRefund");
 
     const parcel = await relay.parcels(parcelId);
-    expect(parcel.status).to.equal(6);
+    expect(parcel.status).to.equal(5);
     expect(await relay.platformReserve()).to.equal(0n);
     expect(await relay.pendingRefunds(sender.address)).to.equal(price - reserveTopUp);
   });
@@ -247,15 +178,20 @@ describe("RelayEscrow v2.1", function () {
     const parcelId = await relay.parcelCount();
 
     await relay.connect(recipient).payForParcel(parcelId, { value: price });
-    await relay.connect(carrierA).acceptLeg(parcelId);
+    await relay.connect(carrierA).acceptParcel(parcelId);
     await relay.connect(recipient).openDispute(parcelId);
 
-    await relay.connect(owner).resolveDispute(parcelId, 0);
+    await relay.connect(owner).resolveDispute(parcelId);
     expect(await relay.pendingRefunds(await attacker.getAddress())).to.equal(price);
 
     await relay.connect(owner).topUpReserve({ value: price });
 
+    const balanceBefore = await ethers.provider.getBalance(await attacker.getAddress());
     await expect(attacker.connect(owner).attackClaim()).to.not.be.reverted;
+    const balanceAfter = await ethers.provider.getBalance(await attacker.getAddress());
+
     expect(await relay.pendingRefunds(await attacker.getAddress())).to.equal(0n);
+    // Verify attacker only received price once (not 2x from reentrancy)
+    expect(balanceAfter - balanceBefore).to.equal(price);
   });
 });

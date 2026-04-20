@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { formatCount, toWei, formatEth } from "../lib/format";
+import { formatCount, toWei, formatEth, shortAddress } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
+
+async function getBalance(provider, address) {
+  if (!provider || !address) return 0n;
+  try {
+    return await provider.getBalance(address);
+  } catch {
+    return 0n;
+  }
+}
 
 export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [recipient, setRecipient] = useState("");
   const [price, setPrice] = useState("0.1");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [dropoffLocation, setDropoffLocation] = useState("");
   const [payId, setPayId] = useState("");
   const [formError, setFormError] = useState("");
   const [payError, setPayError] = useState("");
@@ -55,6 +66,18 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
       return;
     }
 
+    const pickupValue = pickupLocation.trim();
+    if (!pickupValue) {
+      setFormError("Lieu de depart requis.");
+      return;
+    }
+
+    const dropoffValue = dropoffLocation.trim();
+    if (!dropoffValue) {
+      setFormError("Lieu de destination requis.");
+      return;
+    }
+
     let priceWei;
     try {
       priceWei = toWei(price);
@@ -67,10 +90,12 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.postParcel(recipientValue, priceWei));
+    const ok = await tx.runTx(relay.postParcel(recipientValue, priceWei, pickupValue, dropoffValue));
     if (ok) {
       setRecipient("");
       setPrice("0.1");
+      setPickupLocation("");
+      setDropoffLocation("");
       await relayData.refresh();
     }
   };
@@ -92,6 +117,36 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     const target = relayData.parcels.find((p) => p.id === Number(payId));
     if (!target) {
       setPayError("Aucun colis trouve pour cet ID.");
+      return;
+    }
+
+    if (target.status !== 0) {
+      setPayError(`Statut invalide. Ce colis est "${["Publie", "Paye", "En transit", "Livre", "En litige", "Rembourse"][target.status]}" et ne peut plus etre paye.`);
+      return;
+    }
+
+    if (!wallet.address) {
+      setPayError("Connectez votre wallet d'abord.");
+      return;
+    }
+
+    if (target.recipient?.toLowerCase() !== wallet.address.toLowerCase()) {
+      setPayError(`Seul le destinataire (${shortAddress(target.recipient)}) peut payer ce colis.`);
+      return;
+    }
+
+    console.log("Paying for parcel:", {
+      id: target.id,
+      price: target.price.toString(),
+      sender: target.sender,
+      recipient: target.recipient,
+      status: target.status,
+      wallet: wallet.address
+    });
+
+    const balance = await getBalance(wallet.provider, wallet.address);
+    if (balance < target.price) {
+      setPayError(`Solde insuffisant. Vous avez ${formatEth(balance)} mais le colis coûte ${formatEth(target.price)}.`);
       return;
     }
 
@@ -131,6 +186,26 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
           <h2>Créer un Colis</h2>
           <p className="muted">Initialisez un colis avec son destinataire et sa valeur.</p>
           <form onSubmit={handlePost} className="form">
+            <label>
+              Lieu de depart (Expediteur)
+              <input
+                value={pickupLocation}
+                onChange={(e) => setPickupLocation(e.target.value)}
+                placeholder="Ex: Tunis, Lac 2"
+                required
+              />
+            </label>
+
+            <label>
+              Lieu de destination (Destinataire)
+              <input
+                value={dropoffLocation}
+                onChange={(e) => setDropoffLocation(e.target.value)}
+                placeholder="Ex: Ariana"
+                required
+              />
+            </label>
+
             <label>
               Destinataire
               <input

@@ -12,7 +12,6 @@ contract RelayEscrow {
         Posted,
         Paid,
         InTransit,
-        AwaitingNextCarrier,
         Delivered,
         Disputed,
         Refunded
@@ -21,27 +20,16 @@ contract RelayEscrow {
     struct Parcel {
         address sender;
         address recipient;
+        address carrier;
         uint256 price;
+        string pickupLocation;
+        string dropoffLocation;
         ParcelStatus status;
-        address[] carrierChain;
-        uint16 currentHop;
-        bytes32[] photoHashes;
         uint256 createdAt;
         uint256 lastActionAt;
     }
 
-    struct HandoffPending {
-        address outgoingCarrier;
-        address expectedIncoming;
-        bytes32 outgoingHash;
-        bytes32 incomingHash;
-        bool outgoingConfirmed;
-        bool incomingConfirmed;
-        uint256 deadline;
-    }
-
     mapping(uint256 => Parcel) public parcels;
-    mapping(uint256 => HandoffPending) public pendingHandoffs;
     mapping(uint256 => mapping(address => uint256)) public lockedByParcel;
     mapping(address => uint256) public totalLockedByCarrier;
     mapping(address => uint256) public pendingRefunds;
@@ -52,8 +40,7 @@ contract RelayEscrow {
     uint256 public parcelCount;
     address public platformOwner;
 
-    uint256 public constant HANDOFF_TIMEOUT = 2 hours;
-    uint256 public constant NEXT_CARRIER_TIMEOUT = 24 hours;
+    uint256 public constant CARRIER_ACCEPT_TIMEOUT = 24 hours;
     uint256 public constant DISPUTE_TIMEOUT = 30 days;
     // CORRECTION Point 5 : 5e18 = 5 ETH (~15 000$) était absurde pour un colis tunisien.
     // On utilise 5 finney (0.005 ETH) comme seuil "micro-colis sans garantie de points".
@@ -64,21 +51,7 @@ contract RelayEscrow {
 
     event ParcelPosted(uint256 indexed parcelId, address indexed sender, address indexed recipient, uint256 price);
     event ParcelPaid(uint256 indexed parcelId, address indexed recipient, uint256 amount);
-    event LegAccepted(uint256 indexed parcelId, address indexed carrier, uint16 hop);
-    event HandoffInitiated(
-        uint256 indexed parcelId,
-        address indexed from,
-        address indexed expectedTo,
-        bytes32 photoHash,
-        uint256 deadline
-    );
-    event HandoffConfirmed(
-        uint256 indexed parcelId,
-        address indexed from,
-        address indexed to,
-        bytes32 photoHash,
-        uint256 timestamp
-    );
+    event ParcelAccepted(uint256 indexed parcelId, address indexed carrier);
     event DeliveryConfirmed(uint256 indexed parcelId, address indexed recipient);
     event PaymentReleased(uint256 indexed parcelId, address indexed sender, uint256 senderAmount, uint256 platformFee);
     event DisputeOpened(uint256 indexed parcelId, address indexed by);
@@ -106,9 +79,16 @@ contract RelayEscrow {
         reputation = ICarrierReputation(reputationAddress);
     }
 
-    function postParcel(address recipient, uint256 price) external returns (uint256) {
+    function postParcel(
+        address recipient,
+        uint256 price,
+        string calldata pickupLocation,
+        string calldata dropoffLocation
+    ) external returns (uint256) {
         require(recipient != address(0), "Recipient invalide");
         require(price > 0, "Prix invalide");
+        require(bytes(pickupLocation).length > 0, "Depart invalide");
+        require(bytes(dropoffLocation).length > 0, "Destination invalide");
 
         parcelCount += 1;
         uint256 parcelId = parcelCount;
@@ -116,7 +96,10 @@ contract RelayEscrow {
         Parcel storage p = parcels[parcelId];
         p.sender = msg.sender;
         p.recipient = recipient;
+        p.carrier = address(0);
         p.price = price;
+        p.pickupLocation = pickupLocation;
+        p.dropoffLocation = dropoffLocation;
         p.status = ParcelStatus.Posted;
         p.createdAt = block.timestamp;
         p.lastActionAt = block.timestamp;
@@ -138,15 +121,12 @@ contract RelayEscrow {
         emit ParcelPaid(parcelId, msg.sender, msg.value);
     }
 
-    function acceptLeg(uint256 parcelId) external nonReentrant {
+    function acceptParcel(uint256 parcelId) external nonReentrant {
         Parcel storage p = parcels[parcelId];
-        require(
-            p.status == ParcelStatus.Paid || p.status == ParcelStatus.AwaitingNextCarrier,
-            "Statut invalide"
-        );
         require(msg.sender != p.recipient, "Recipient interdit");
         require(msg.sender != p.sender, "Sender interdit");
-        require(p.currentHop == p.carrierChain.length, "Hop incoherent");
+        require(p.carrier == address(0), "Deja pris");
+        require(p.status == ParcelStatus.Paid, "Statut invalide");
 
         if (p.price >= MIN_VALUE_NO_POINTS) {
             uint256 total = reputation.getPoints(msg.sender);
@@ -159,83 +139,25 @@ contract RelayEscrow {
             totalLockedByCarrier[msg.sender] += p.price;
         }
 
-        p.carrierChain.push(msg.sender);
+        p.carrier = msg.sender;
         p.status = ParcelStatus.InTransit;
         p.lastActionAt = block.timestamp;
 
-        emit LegAccepted(parcelId, msg.sender, uint16(p.carrierChain.length - 1));
-    }
-
-    function initiateHandoff(uint256 parcelId, address expectedIncoming, bytes32 photoHash) external {
-        Parcel storage p = parcels[parcelId];
-        require(p.status == ParcelStatus.InTransit, "Pas en transit");
-        require(p.carrierChain.length > 0, "Aucun porteur");
-        require(p.currentHop < p.carrierChain.length, "Hop invalide");
-
-        address outgoing = p.carrierChain[p.currentHop];
-        require(msg.sender == outgoing, "Seul porteur sortant");
-        require(expectedIncoming != address(0), "Incoming invalide");
-        require(expectedIncoming != outgoing, "Incoming=outgoing interdit");
-
-        HandoffPending storage h = pendingHandoffs[parcelId];
-        require(!h.outgoingConfirmed && !h.incomingConfirmed, "Handoff deja en cours");
-
-        h.outgoingCarrier = outgoing;
-        h.expectedIncoming = expectedIncoming;
-        h.outgoingHash = photoHash;
-        h.outgoingConfirmed = true;
-        h.deadline = block.timestamp + HANDOFF_TIMEOUT;
-
-        p.lastActionAt = block.timestamp;
-
-        emit HandoffInitiated(parcelId, outgoing, expectedIncoming, photoHash, h.deadline);
-    }
-
-    // CORRECTION : Le porteur entrant (B) doit soumettre le MÊME hash que A lui a
-    // communiqué hors-chaîne (via QR code / message). Ce n'est pas une nouvelle photo,
-    // c'est une confirmation de réception du hash de référence de A.
-    function acknowledgeHandoff(uint256 parcelId, bytes32 photoHash) external {
-        Parcel storage p = parcels[parcelId];
-        HandoffPending storage h = pendingHandoffs[parcelId];
-        require(p.status == ParcelStatus.InTransit, "Pas en transit");
-        require(h.outgoingConfirmed, "Aucune initiation");
-        require(block.timestamp <= h.deadline, "Timeout handoff");
-        require(msg.sender == h.expectedIncoming, "Incoming non autorise");
-        require(!h.incomingConfirmed, "Incoming deja confirme");
-        // B doit soumettre le même hash que A — c'est la preuve qu'ils se sont bien
-        // rencontrés et que B a accepté la photo de référence du colis
-        require(photoHash == h.outgoingHash, "Hash de confirmation invalide");
-
-        h.incomingHash = photoHash;
-        h.incomingConfirmed = true;
-
-        p.photoHashes.push(photoHash);
-        p.currentHop += 1;
-
-        address outgoing = h.outgoingCarrier;
-        _unlockCarrierForParcel(parcelId, outgoing);
-        reputation.addPoints(outgoing, p.price / 10);
-
-        _clearPendingHandoff(parcelId);
-
-        p.status = ParcelStatus.AwaitingNextCarrier;
-        p.lastActionAt = block.timestamp;
-
-        emit HandoffConfirmed(parcelId, outgoing, msg.sender, photoHash, block.timestamp);
+        emit ParcelAccepted(parcelId, msg.sender);
     }
 
     function confirmDelivery(uint256 parcelId) external nonReentrant {
         Parcel storage p = parcels[parcelId];
         require(msg.sender == p.recipient, "Seul destinataire");
-        require(p.status == ParcelStatus.AwaitingNextCarrier, "Statut invalide");
+        require(p.status == ParcelStatus.InTransit, "Statut invalide");
 
         p.status = ParcelStatus.Delivered;
         p.lastActionAt = block.timestamp;
 
-        if (p.carrierChain.length > 0 && p.currentHop < p.carrierChain.length) {
-            address currentCarrier = p.carrierChain[p.currentHop];
-            _unlockCarrierForParcel(parcelId, currentCarrier);
-            reputation.addPoints(currentCarrier, p.price / 10);
+        address carrier = p.carrier;
+        if (carrier != address(0)) {
+            _unlockCarrierForParcel(parcelId, carrier);
+            reputation.addPoints(carrier, p.price / 10);
         }
 
         uint256 fee = (p.price * 5) / 100;
@@ -252,9 +174,13 @@ contract RelayEscrow {
         Parcel storage p = parcels[parcelId];
         require(msg.sender == p.recipient, "Seul destinataire");
         require(
-            p.status == ParcelStatus.InTransit || p.status == ParcelStatus.AwaitingNextCarrier,
+            p.status == ParcelStatus.Paid || p.status == ParcelStatus.InTransit,
             "Statut invalide"
         );
+
+        if (p.status == ParcelStatus.Paid) {
+            require(block.timestamp - p.lastActionAt > CARRIER_ACCEPT_TIMEOUT, "Delai acceptation non atteint");
+        }
 
         // CORRECTION Point 4 : 30 days exactement est faux (mois = 28 à 31 jours).
         // On utilise des périodes de 4 semaines (28 jours), plus déterministe on-chain.
@@ -270,31 +196,21 @@ contract RelayEscrow {
         emit DisputeOpened(parcelId, msg.sender);
     }
 
-    // CORRECTION Point 1 : Garde minimale contre une désignation arbitraire.
-    // Le faultyHop doit correspondre à un tronçon qui a RÉELLEMENT eu lieu,
-    // c'est-à-dire un tronçon pour lequel un hash photo a été enregistré on-chain.
-    // Cela ne remplace pas un oracle de litiges, mais empêche de blâmer un porteur
-    // qui n'a jamais physiquement tenu le colis.
-    function resolveDispute(uint256 parcelId, uint16 faultyHop) external onlyOwner nonReentrant {
+    function resolveDispute(uint256 parcelId) external onlyOwner nonReentrant {
         Parcel storage p = parcels[parcelId];
         require(p.status == ParcelStatus.Disputed, "Pas en litige");
-        require(faultyHop < p.carrierChain.length, "Hop invalide");
-        // Le porteur accusé doit avoir au moins initié un handoff (hop complété = hash enregistré)
-        // hop 0 est le premier porteur, il peut être fautif s'il a reçu le colis (carrierChain non vide)
-        // Les hops suivants doivent avoir un photoHash correspondant (index faultyHop - 1 dans photoHashes)
-        if (faultyHop > 0) {
-            require(faultyHop - 1 < p.photoHashes.length, "Hop non complete: aucune preuve on-chain");
-        }
 
         p.status = ParcelStatus.Refunded;
         p.lastActionAt = block.timestamp;
 
         _safeTransferETH(p.recipient, p.price, "Remboursement destinataire echec");
         _paySenderFromReserveOrDebt(parcelId, p.sender, p.price);
-        _unlockAllParcelLocks(parcelId);
+        _unlockCarrierForParcel(parcelId, p.carrier);
 
-        address faultyCarrier = p.carrierChain[faultyHop];
-        reputation.deductPoints(faultyCarrier, p.price);
+        address faultyCarrier = p.carrier;
+        if (faultyCarrier != address(0)) {
+            reputation.deductPoints(faultyCarrier, p.price);
+        }
 
         emit DisputeResolved(parcelId, faultyCarrier, p.price);
     }
@@ -322,36 +238,6 @@ contract RelayEscrow {
         Parcel storage p = parcels[parcelId];
         uint256 elapsed = block.timestamp - p.lastActionAt;
 
-        if (p.status == ParcelStatus.InTransit) {
-            HandoffPending storage h = pendingHandoffs[parcelId];
-            require(h.outgoingConfirmed, "Pas de handoff en attente");
-            require(block.timestamp > h.deadline, "Timeout non atteint");
-
-            address outgoing = h.outgoingCarrier;
-            reputation.deductPoints(outgoing, p.price / 20);
-            _unlockCarrierForParcel(parcelId, outgoing);
-
-            _clearPendingHandoff(parcelId);
-            p.status = ParcelStatus.AwaitingNextCarrier;
-            p.lastActionAt = block.timestamp;
-
-            emit TimeoutTriggered(parcelId, "handoff", outgoing);
-            return;
-        }
-
-        if (p.status == ParcelStatus.AwaitingNextCarrier) {
-            require(elapsed > NEXT_CARRIER_TIMEOUT, "Timeout non atteint");
-
-            p.status = ParcelStatus.Refunded;
-            p.lastActionAt = block.timestamp;
-
-            _safeTransferETH(p.recipient, p.price, "Refund destinataire echec");
-            _unlockAllParcelLocks(parcelId);
-
-            emit TimeoutTriggered(parcelId, "nextCarrier", address(0));
-            return;
-        }
-
         if (p.status == ParcelStatus.Disputed) {
             require(elapsed > DISPUTE_TIMEOUT, "Timeout non atteint");
 
@@ -360,7 +246,10 @@ contract RelayEscrow {
 
             _safeTransferETH(p.recipient, p.price, "Refund destinataire echec");
             _paySenderFromReserveOrDebt(parcelId, p.sender, p.price);
-            _unlockAllParcelLocks(parcelId);
+
+            if (p.carrier != address(0)) {
+                _unlockCarrierForParcel(parcelId, p.carrier);
+            }
 
             emit TimeoutTriggered(parcelId, "dispute", address(0));
             return;
@@ -378,18 +267,6 @@ contract RelayEscrow {
         return total - locked;
     }
 
-    function carrierCount(uint256 parcelId) external view returns (uint256) {
-        return parcels[parcelId].carrierChain.length;
-    }
-
-    function carrierAt(uint256 parcelId, uint256 index) external view returns (address) {
-        return parcels[parcelId].carrierChain[index];
-    }
-
-    function photoHashCount(uint256 parcelId) external view returns (uint256) {
-        return parcels[parcelId].photoHashes.length;
-    }
-
     function _unlockCarrierForParcel(uint256 parcelId, address carrier) internal {
         uint256 locked = lockedByParcel[parcelId][carrier];
         if (locked > 0) {
@@ -400,17 +277,6 @@ contract RelayEscrow {
                 totalLockedByCarrier[carrier] = 0;
             }
         }
-    }
-
-    function _unlockAllParcelLocks(uint256 parcelId) internal {
-        Parcel storage p = parcels[parcelId];
-        for (uint16 i = 0; i < p.carrierChain.length; i++) {
-            _unlockCarrierForParcel(parcelId, p.carrierChain[i]);
-        }
-    }
-
-    function _clearPendingHandoff(uint256 parcelId) internal {
-        delete pendingHandoffs[parcelId];
     }
 
     function _paySenderFromReserveOrDebt(uint256 parcelId, address sender, uint256 amount) internal {

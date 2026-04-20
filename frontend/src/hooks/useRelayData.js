@@ -36,9 +36,11 @@ export function useRelayData(relay, address) {
           id: i,
           sender: p.sender,
           recipient: p.recipient,
+          carrier: p.carrier,
           price: p.price,
+          pickupLocation: p.pickupLocation,
+          dropoffLocation: p.dropoffLocation,
           status: Number(p.status),
-          currentHop: Number(p.currentHop),
           createdAt: Number(p.createdAt),
           lastActionAt: Number(p.lastActionAt)
         });
@@ -62,9 +64,7 @@ export function useRelayData(relay, address) {
         setError((err?.shortMessage || err?.message || "Impossible de charger les donnees.").slice(0, 280));
       }
     } finally {
-      if (requestRef.current === requestId) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   }, [relay, address]);
 

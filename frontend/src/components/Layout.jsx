@@ -1,6 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import { shortAddress } from "../lib/format";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const links = [
   { to: "/", label: "Marche" },
@@ -14,6 +14,20 @@ export default function Layout({ children, wallet, relayData }) {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("relaychain-theme") === "dark" || false;
   });
+
+  const isExpediteur = useMemo(() => {
+    if (!wallet.address || !relayData?.parcels) return false;
+    return relayData.parcels.some(
+      (p) => p.sender?.toLowerCase() === wallet.address.toLowerCase()
+    );
+  }, [relayData.parcels, wallet.address]);
+
+  const isPorteur = useMemo(() => {
+    if (!wallet.address || !relayData?.parcels) return false;
+    return relayData.parcels.some(
+      (p) => p.carrier?.toLowerCase() === wallet.address.toLowerCase()
+    );
+  }, [relayData.parcels, wallet.address]);
 
   useEffect(() => {
     if (isDark) {
@@ -44,15 +58,15 @@ export default function Layout({ children, wallet, relayData }) {
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Marche
           </NavLink>
+          {wallet.isConnected && isExpediteur && (
+            <NavLink to="/sender" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+              Expediteur
+            </NavLink>
+          )}
           {wallet.isConnected && (
-            <>
-              <NavLink to="/sender" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-                Expediteur
-              </NavLink>
-              <NavLink to="/carrier" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-                Porteur
-              </NavLink>
-            </>
+            <NavLink to="/carrier" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+              Porteur
+            </NavLink>
           )}
           {isOwner && (
             <NavLink to="/platform" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>

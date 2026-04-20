@@ -4,9 +4,7 @@ import { shortAddress } from "../lib/format";
 const relayEventNames = [
   "ParcelPosted",
   "ParcelPaid",
-  "LegAccepted",
-  "HandoffInitiated",
-  "HandoffConfirmed",
+  "ParcelAccepted",
   "DeliveryConfirmed",
   "PaymentReleased",
   "DisputeOpened",
@@ -57,13 +55,17 @@ export default function AuditLog({ relay, rep }) {
 
         const all = [];
         for (const name of relayEventNames) {
-          const filter = relay.filters[name]();
+          const filterFn = relay.filters[name];
+          if (!filterFn) continue;
+          const filter = filterFn();
           const logs = await relay.queryFilter(filter, -3000);
           all.push(...normalize(name, logs, "relay"));
         }
 
         for (const name of repEventNames) {
-          const filter = rep.filters[name]();
+          const filterFn = rep.filters[name];
+          if (!filterFn) continue;
+          const filter = filterFn();
           const logs = await rep.queryFilter(filter, -3000);
           all.push(...normalize(name, logs, "reputation"));
         }

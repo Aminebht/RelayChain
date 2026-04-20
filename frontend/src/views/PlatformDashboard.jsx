@@ -6,12 +6,11 @@ import ParcelTable from "../components/ParcelTable";
 export default function PlatformDashboard({ wallet, relay, rep, tx, relayData }) {
   const [topUp, setTopUp] = useState("1");
   const [resolveParcel, setResolveParcel] = useState("");
-  const [faultyHop, setFaultyHop] = useState("0");
   const [onboardAddress, setOnboardAddress] = useState("");
   const [actionError, setActionError] = useState("");
 
   const disputed = useMemo(
-    () => relayData.parcels.filter((p) => p.status === 5),
+    () => relayData.parcels.filter((p) => p.status === 4),
     [relayData.parcels]
   );
 
@@ -31,7 +30,7 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
       return;
     }
 
-    const value = BigInt(Math.floor(Number(topUp) * 1e18));
+    const value = BigInt(Math.floor(topUpValue * 1e18));
     const ok = await tx.runTx(relay.topUpReserve({ value }));
     if (ok) {
       await relayData.refresh();
@@ -48,15 +47,14 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
       setActionError("Contrat indisponible.");
       return;
     }
-    if (!/^\d+$/.test(resolveParcel) || !/^\d+$/.test(faultyHop)) {
-      setActionError("ID colis et hop doivent etre des entiers positifs.");
+    if (!/^\d+$/.test(resolveParcel)) {
+      setActionError("ID colis doit etre un entier positif.");
       return;
     }
 
-    const ok = await tx.runTx(relay.resolveDispute(Number(resolveParcel), Number(faultyHop)));
+    const ok = await tx.runTx(relay.resolveDispute(Number(resolveParcel)));
     if (ok) {
       setResolveParcel("");
-      setFaultyHop("0");
       await relayData.refresh();
     } else {
       setActionError("Resolution echouee. Verifiez les valeurs saisies.");
@@ -126,16 +124,10 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
           <h2>Résolution de Litige</h2>
           <p className="muted text-danger">Dossiers ouverts: {disputed.length}</p>
           <form className="form" onSubmit={handleResolve}>
-            <div className="form-row form-row-two">
-              <label>
-                ID Colis Litigieux
-                <input value={resolveParcel} onChange={(e) => setResolveParcel(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={12} required />
-              </label>
-              <label>
-                Tronçon Fautif (Hop)
-                <input value={faultyHop} onChange={(e) => setFaultyHop(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={6} required />
-              </label>
-            </div>
+            <label>
+              ID Colis Litigieux
+              <input value={resolveParcel} onChange={(e) => setResolveParcel(e.target.value)} inputMode="numeric" pattern="[0-9]*" maxLength={12} required />
+            </label>
             <button className="btn-danger" disabled={tx.loading}>
               Rendre le verdict arbitral
             </button>

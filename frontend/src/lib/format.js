@@ -49,10 +49,9 @@ export function statusLabel(status) {
     0: "Publie",
     1: "Paye",
     2: "En transit",
-    3: "En attente porteur suivant",
-    4: "Livre",
-    5: "En litige",
-    6: "Rembourse"
+    3: "Livre",
+    4: "En litige",
+    5: "Rembourse"
   };
   return map[Number(status)] || `Inconnu(${status})`;
 }

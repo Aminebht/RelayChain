@@ -13,13 +13,18 @@ import { useRelayData } from "./hooks/useRelayData";
 export default function App() {
   const wallet = useWallet();
   const tx = useTx();
-  const { relay, rep } = useContracts(wallet.signer ?? wallet.provider);
+  const { relay, rep, contractError } = useContracts(wallet.signer ?? wallet.provider);
   const relayData = useRelayData(relay, wallet.address);
 
   const sharedProps = { wallet, relay, rep, tx, relayData };
 
   return (
     <Layout wallet={wallet} relayData={relayData}>
+      {contractError && (
+        <div className="error-banner" role="status">
+          {contractError}
+        </div>
+      )}
       {relayData.error && (
         <div className="error-banner" role="status">
           Donnees indisponibles: {relayData.error}
