@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEth } from "../lib/format";
+import ParcelTable from "../components/ParcelTable";
 
 export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
   const [topUp, setTopUp] = useState("1");
@@ -7,7 +8,7 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
   const [faultyHop, setFaultyHop] = useState("0");
   const [monthCount, setMonthCount] = useState(0n);
 
-  const monthIndex = Math.floor(Date.now() / 1000 / (30 * 24 * 60 * 60));
+  const monthIndex = Math.floor(Date.now() / 1000 / (28 * 24 * 60 * 60)); // v2.1 = 4 weeks sync
   const disputed = useMemo(
     () => relayData.parcels.filter((p) => p.status === 5),
     [relayData.parcels]
@@ -17,32 +18,31 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
 
   useEffect(() => {
     const loadMonthly = async () => {
-      if (!relay || !wallet.address) {
-        return;
+      if (!relay || !wallet.address) return;
+      try {
+        const count = await relay.monthlyDisputeCount(wallet.address, monthIndex);
+        setMonthCount(count);
+      } catch {
+        setMonthCount(0n);
       }
-      const count = await relay.monthlyDisputeCount(wallet.address, monthIndex);
-      setMonthCount(count);
     };
     loadMonthly();
   }, [relay, wallet.address, monthIndex, relayData.parcels]);
 
   const handleTopUp = async (e) => {
     e.preventDefault();
-    if (!relay) {
-      return;
-    }
+    if (!relay) return;
     const value = BigInt(Math.floor(Number(topUp) * 1e18));
     const ok = await tx.runTx(relay.topUpReserve({ value }));
     if (ok) {
       await relayData.refresh();
+      setTopUp("1");
     }
   };
 
   const handleResolve = async (e) => {
     e.preventDefault();
-    if (!relay) {
-      return;
-    }
+    if (!relay) return;
     const ok = await tx.runTx(relay.resolveDispute(Number(resolveParcel), Number(faultyHop)));
     if (ok) {
       setResolveParcel("");
@@ -53,43 +53,78 @@ export default function PlatformDashboard({ wallet, relay, tx, relayData }) {
 
   if (!isOwner) {
     return (
-      <section className="panel">
-        <h2>Tableau de bord plateforme</h2>
-        <p className="muted">Seul le proprietaire de la plateforme peut executer les actions admin reserve/litige.</p>
-      </section>
+      <div className="empty-state">
+        <span>🔒</span>
+        Accès Restreint.
+        <p style={{ marginTop: "12px", color: "var(--text-secondary)" }}>
+          Seul le portefeuille administrateur (Owner) peut accéder aux paramètres de la Plateforme.
+        </p>
+      </div>
     );
   }
 
   return (
-    <section className="grid two">
-      <article className="panel">
-        <h2>Reserve</h2>
-        <p className="muted">Reserve actuelle : {formatEth(relayData.platformReserve)}</p>
-        <form className="form" onSubmit={handleTopUp}>
-          <label>
-            Recharger en ETH
-            <input value={topUp} onChange={(e) => setTopUp(e.target.value)} required />
-          </label>
-          <button disabled={tx.loading}>Recharger</button>
-        </form>
-      </article>
+    <>
+      <div className="page-header">
+        <h1>Administration Plateforme</h1>
+        <p>Dashboard de supervision, gestion du fonds de réserve et résolution des litiges.</p>
+      </div>
 
-      <article className="panel">
-        <h2>Resoudre un litige</h2>
-        <form className="form" onSubmit={handleResolve}>
-          <label>
-            ID du colis
-            <input value={resolveParcel} onChange={(e) => setResolveParcel(e.target.value)} required />
-          </label>
-          <label>
-            Troncon fautif
-            <input value={faultyHop} onChange={(e) => setFaultyHop(e.target.value)} required />
-          </label>
-          <button disabled={tx.loading}>Resoudre</button>
-        </form>
-        <p className="muted">Colis en litige : {disputed.length}</p>
-        <p className="muted">Mes litiges mensuels (lecture) : {monthCount.toString()}</p>
-      </article>
-    </section>
+      <section className="grid two">
+        <article className="panel span-all">
+          <h2>Fonds de Garantie (Trésorerie)</h2>
+          <div className="stat-row" style={{ gridTemplateColumns: "1fr", marginTop: "16px", marginBottom: "0" }}>
+            <div className="stat-card" style={{ borderColor: "var(--brand-dim)", background: "var(--brand-soft)" }}>
+              <span className="stat-value" style={{ color: "var(--brand)" }}>
+                {formatEth(relayData.platformReserve)} ETH
+              </span>
+              <span className="stat-label">Réserve Accumulée</span>
+            </div>
+          </div>
+        </article>
+
+        <article className="panel">
+          <h2>Alimenter la Réserve</h2>
+          <p className="muted">Injection manuelle de liquidités pour couvrir les litiges urgents.</p>
+          <form className="form" onSubmit={handleTopUp}>
+            <label>
+              Montant ETH
+              <input value={topUp} onChange={(e) => setTopUp(e.target.value)} required />
+            </label>
+            <button disabled={tx.loading} style={{ marginTop: "8px" }}>
+              💰 Dépôt de Fonds
+            </button>
+          </form>
+        </article>
+
+        <article className="panel">
+          <h2>Résolution de Litige</h2>
+          <div className="info-box" style={{ marginBottom: "16px", background: "rgba(239,68,68,0.05)", borderColor: "rgba(239,68,68,0.2)", borderLeftColor: "var(--accent-red)" }}>
+            <span style={{ color: "var(--accent-red)", fontWeight: 600 }}>Dossiers ouverts: {disputed.length}</span>
+            <br/>Analysez les Hash photos avant de trancher. Le porteur perdra ses points.
+          </div>
+          <form className="form" onSubmit={handleResolve}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <label>
+                ID Colis Litigieux
+                <input value={resolveParcel} onChange={(e) => setResolveParcel(e.target.value)} required />
+              </label>
+              <label>
+                Tronçon Fautif (Hop)
+                <input value={faultyHop} onChange={(e) => setFaultyHop(e.target.value)} required />
+              </label>
+            </div>
+            <button className="btn-danger" disabled={tx.loading} style={{ marginTop: "8px" }}>
+              ⚖️ Rendre le Verdict Arbitral
+            </button>
+          </form>
+        </article>
+
+        <article className="panel span-all">
+          <h2>Colis en Litige Actuellement</h2>
+          <ParcelTable parcels={disputed} />
+        </article>
+      </section>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import ParcelTable from "../components/ParcelTable";
 
 export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [recipient, setRecipient] = useState("");
-  const [price, setPrice] = useState("1");
+  const [price, setPrice] = useState("0.1");
   const [payId, setPayId] = useState("");
   const [formError, setFormError] = useState("");
   const [accounts, setAccounts] = useState([]);
@@ -21,7 +21,6 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
       setAccounts([]);
       return;
     }
-
     try {
       setLoadingAccounts(true);
       const list = await wallet.provider.send("eth_accounts", []);
@@ -45,7 +44,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     setFormError("");
 
     if (!relay) {
-      setFormError("Contrat RelayEscrow indisponible. Verifiez l'adresse deployee.");
+      setFormError("Contrat RelayEscrow indisponible. Vérifiez l'adresse déployée.");
       return;
     }
 
@@ -59,7 +58,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     try {
       priceWei = toWei(price);
       if (priceWei <= 0n) {
-        setFormError("Le prix doit etre superieur a 0.");
+        setFormError("Le prix doit être supérieur à 0.");
         return;
       }
     } catch {
@@ -70,21 +69,17 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     const ok = await tx.runTx(relay.postParcel(recipientValue, priceWei));
     if (ok) {
       setRecipient("");
-      setPrice("1");
+      setPrice("0.1");
       await relayData.refresh();
     }
   };
 
   const handlePay = async (e) => {
     e.preventDefault();
-    if (!relay || !payId) {
-      return;
-    }
+    if (!relay || !payId) return;
 
     const target = relayData.parcels.find((p) => p.id === Number(payId));
-    if (!target) {
-      return;
-    }
+    if (!target) return;
 
     const ok = await tx.runTx(relay.payForParcel(target.id, { value: target.price }));
     if (ok) {
@@ -94,67 +89,110 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
   };
 
   return (
-    <section className="grid two">
-      <article className="panel">
-        <h2>Creer un colis</h2>
-        <p className="muted">L'expediteur publie un colis avec destinataire et prix.</p>
-        <form onSubmit={handlePost} className="form">
-          <label>
-            Destinataire
-            <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="0x..." required />
-          </label>
-          <label>
-            Comptes MetaMask detectes
-            <select
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              disabled={!wallet.isConnected || loadingAccounts || !accounts.length}
-            >
-              <option value="">Selectionner un compte...</option>
-              {accounts.map((account) => (
-                <option key={account} value={account}>
-                  {account}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={loadAccounts}
-            disabled={!wallet.isConnected || loadingAccounts}
-          >
-            {loadingAccounts ? "Chargement des comptes..." : "Actualiser les comptes"}
-          </button>
-          {!accounts.length && wallet.isConnected && (
-            <p className="muted">Aucun compte expose. Dans MetaMask, autorisez plusieurs comptes pour ce site.</p>
-          )}
-          <label>
-            Prix (ETH)
-            <input value={price} onChange={(e) => setPrice(e.target.value)} required />
-          </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Publier le colis</button>
-        </form>
-        {formError && <p className="error-text">{formError}</p>}
-      </article>
+    <>
+      <div className="page-header">
+        <h1>Marché Public</h1>
+        <p>Explorez les colis publiés et sécurisez votre achat sur la blockchain.</p>
+      </div>
 
-      <article className="panel">
-        <h2>Payer un colis</h2>
-        <p className="muted">Le destinataire paie le montant exact de l'escrow.</p>
-        <form onSubmit={handlePay} className="form">
-          <label>
-            ID du colis
-            <input value={payId} onChange={(e) => setPayId(e.target.value)} placeholder="1" required />
-          </label>
-          <button disabled={!wallet.isConnected || tx.loading}>Payer</button>
-        </form>
-        <p className="muted">Colis publies ouverts : {posted.length}</p>
-      </article>
+      <section className="grid two">
+        {/* Create Parcel Panel */}
+        <article className="panel">
+          <h2>Créer un Colis</h2>
+          <p className="muted">Initialisez un colis avec son destinataire et sa valeur.</p>
+          <form onSubmit={handlePost} className="form">
+            <label>
+              Destinataire
+              <input 
+                value={recipient} 
+                onChange={(e) => setRecipient(e.target.value)} 
+                placeholder="Ex: 0x123..." 
+                required 
+              />
+            </label>
+            <label>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Comptes Test Disponibles</span>
+                <span 
+                  onClick={loadAccounts} 
+                  style={{ color: "var(--brand)", cursor: "pointer", fontSize: "0.75rem" }}
+                >
+                  {loadingAccounts ? "🔄" : "Actualiser"}
+                </span>
+              </div>
+              <select
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                disabled={!wallet.isConnected || loadingAccounts || !accounts.length}
+              >
+                <option value="">Sélectionner une adresse locale...</option>
+                {accounts.map((account) => (
+                  <option key={account} value={account}>{account}</option>
+                ))}
+              </select>
+            </label>
+            
+            <label>
+              Prix (ETH)
+              <div style={{ position: "relative" }}>
+                <input 
+                  type="text"
+                  value={price} 
+                  onChange={(e) => setPrice(e.target.value)} 
+                  required 
+                  style={{ paddingRight: "40px" }}
+                />
+                <span style={{ 
+                  position: "absolute", right: "12px", top: "50%", 
+                  transform: "translateY(-50%)", color: "var(--text-muted)", 
+                  fontSize: "0.8rem", pointerEvents: "none" 
+                }}>ETH</span>
+              </div>
+            </label>
 
-      <article className="panel span-all">
-        <h2>Colis</h2>
-        <p className="muted">Reserve : {formatEth(relayData.platformReserve)}</p>
-        <ParcelTable parcels={relayData.parcels} />
-      </article>
-    </section>
+            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
+              📦 Publier le Colis
+            </button>
+          </form>
+          {formError && <div className="error-banner" style={{ marginTop: "16px" }}>{formError}</div>}
+        </article>
+
+        {/* Pay Parcel Panel */}
+        <article className="panel">
+          <h2>Payer un Colis</h2>
+          <p className="muted">Sécurisez l'achat en bloquant les fonds dans l'Escrow.</p>
+          
+          <div className="info-box" style={{ marginBottom: "16px" }}>
+            <strong style={{ color: "var(--text-primary)" }}>{posted.length}</strong> colis en attente de paiement.
+          </div>
+
+          <form onSubmit={handlePay} className="form">
+            <label>
+              ID du Colis
+              <input 
+                value={payId} 
+                onChange={(e) => setPayId(e.target.value)} 
+                placeholder="Ex: 1" 
+                required 
+              />
+            </label>
+            <button disabled={!wallet.isConnected || tx.loading} style={{ marginTop: "8px" }}>
+              💳 Verrouiller les Fonds
+            </button>
+          </form>
+        </article>
+
+        {/* Table Panel */}
+        <article className="panel span-all">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ margin: 0 }}>Tous les Colis</h2>
+            <div className="status status-2" style={{ border: "none" }}>
+              Réserve Plateforme: {formatEth(relayData.platformReserve)}
+            </div>
+          </div>
+          <ParcelTable parcels={relayData.parcels} />
+        </article>
+      </section>
+    </>
   );
 }
