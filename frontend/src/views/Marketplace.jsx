@@ -18,6 +18,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [pickupLocation, setPickupLocation] = useState("");
   const [dropoffLocation, setDropoffLocation] = useState("");
   const [payId, setPayId] = useState("");
+  const [completeId, setCompleteId] = useState("");
   const [formError, setFormError] = useState("");
   const [payError, setPayError] = useState("");
   const [accounts, setAccounts] = useState([]);
@@ -159,6 +160,16 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     }
   };
 
+  const handleComplete = async (e) => {
+    e.preventDefault();
+    if (!relay || !completeId) return;
+    const ok = await tx.runTx(relay.confirmDelivery(Number(completeId)));
+    if (ok) {
+      setCompleteId("");
+      await relayData.refresh();
+    }
+  };
+
   return (
     <>
       <div className="page-header">
@@ -268,26 +279,38 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
         </article>
 
         <article className="panel">
-          <h2>Payer un Colis</h2>
-          <p className="muted">
-            Sécurisez un colis publié en verrouillant la valeur.
-          </p>
+          <h2>Actions Destinataire</h2>
+          <p className="muted">Sécurisez l'achat ou confirmez la réception finale.</p>
+          
+          <div className="info-box" style={{ marginBottom: "16px" }}>
+            <strong style={{ color: "var(--text-primary)" }}>{posted.length}</strong> colis en attente de paiement.
+          </div>
 
-          <form onSubmit={handlePay} className="form">
+          <form onSubmit={handlePay} className="form" style={{ marginBottom: "20px", paddingBottom: "20px", borderBottom: "1px solid var(--border)"}}>
             <label>
-              ID du Colis
-              <input
-                value={payId}
-                onChange={(e) => setPayId(e.target.value)}
-                placeholder="Ex: 1"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={12}
-                required
+              1. Payer le Colis (Créer la garantie)
+              <input 
+                value={payId} 
+                onChange={(e) => setPayId(e.target.value)} 
+                placeholder="Ex: 1" 
               />
             </label>
-            <button disabled={!wallet.isConnected || tx.loading}>
-              Verrouiller les fonds
+            <button type="submit" disabled={!wallet.isConnected || tx.loading || !payId} style={{ marginTop: "8px" }}>
+              Verrouiller les Fonds
+            </button>
+          </form>
+
+          <form onSubmit={handleComplete} className="form">
+            <label>
+              2. Confirmer la Réception (Fin)
+              <input 
+                value={completeId} 
+                onChange={(e) => setCompleteId(e.target.value)} 
+                placeholder="Ex: 1" 
+              />
+            </label>
+            <button type="submit" disabled={!wallet.isConnected || tx.loading || !completeId} style={{ marginTop: "8px" }}>
+              J'ai bien reçu ce colis
             </button>
           </form>
           {payError && <div className="error-banner error-banner-inline">{payError}</div>}
