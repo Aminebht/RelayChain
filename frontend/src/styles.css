@@ -1275,6 +1275,35 @@ tbody tr:last-child td {
   color: var(--text-muted);
 }
 
+/* Balance Badges */
+.nav-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.badge-balance {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid var(--brand-dim);
+}
+
+.badge-reserve {
+  background: var(--surface-base);
+  color: var(--status-delivered);
+  border: 1px solid var(--status-delivered);
+}
+
 /* Responsive Landing */
 @media (max-width: 640px) {
   .landing-container {
@@ -1292,5 +1321,15 @@ tbody tr:last-child td {
 
   .steps-grid {
     grid-template-columns: 1fr;
+  }
+
+  .nav-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
   }
 }

@@ -1,9 +1,8 @@
 import { Link, NavLink } from "react-router-dom";
-import { shortAddress } from "../lib/format";
+import { shortAddress, formatEth } from "../lib/format";
 import { useState, useEffect, useMemo } from "react";
 
-
-export default function Layout({ children, wallet, relayData }) {
+export default function Layout({ children, wallet, relayData, userBalance, isOwner }) {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("relaychain-theme") === "dark" || false;
   });
@@ -41,11 +40,6 @@ export default function Layout({ children, wallet, relayData }) {
   }, [isDark]);
 
   const toggleDark = () => setIsDark((d) => !d);
-
-  const isOwner =
-    wallet.address &&
-    relayData?.owner &&
-    wallet.address.toLowerCase() === relayData.owner.toLowerCase();
 
   return (
     <div className="app-shell">
@@ -87,12 +81,22 @@ export default function Layout({ children, wallet, relayData }) {
           </NavLink>
         </nav>
 
-        <div className="nav-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div className="nav-actions">
           <button
             className="theme-switch"
             onClick={toggleDark}
             aria-label="Toggle dark mode"
           />
+          {wallet.isConnected && isOwner && (
+            <span className="badge badge-reserve" title="Reserve de la plateforme">
+              Reserve: {formatEth(relayData.platformReserve)}
+            </span>
+          )}
+          {wallet.isConnected && (
+            <span className="badge badge-balance" title="Votre solde ETH">
+              {formatEth(userBalance.balance)}
+            </span>
+          )}
           <button className="connect-btn" onClick={wallet.connect}>
             {wallet.isConnected ? shortAddress(wallet.address) : "Connecter Wallet"}
           </button>

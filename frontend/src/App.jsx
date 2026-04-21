@@ -11,17 +11,24 @@ import { useWallet } from "./hooks/useWallet";
 import { useContracts } from "./hooks/useContracts";
 import { useTx } from "./hooks/useTx";
 import { useRelayData } from "./hooks/useRelayData";
+import { useBalance } from "./hooks/useBalance";
 
 export default function App() {
   const wallet = useWallet();
   const tx = useTx();
   const { relay, rep, contractError } = useContracts(wallet.signer ?? wallet.provider);
   const relayData = useRelayData(relay, wallet.address);
+  const userBalance = useBalance(wallet.address, wallet.provider);
 
   const sharedProps = { wallet, relay, rep, tx, relayData };
 
+  const isOwner =
+    wallet.address &&
+    relayData?.owner &&
+    wallet.address.toLowerCase() === relayData.owner.toLowerCase();
+
   return (
-    <Layout wallet={wallet} relayData={relayData}>
+    <Layout wallet={wallet} relayData={relayData} userBalance={userBalance} isOwner={isOwner}>
       {contractError && (
         <div className="error-banner" role="status">
           {contractError}
