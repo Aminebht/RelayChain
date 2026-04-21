@@ -31,7 +31,7 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
     }
 
     const value = BigInt(Math.floor(topUpValue * 1e18));
-    const ok = await tx.runTx(relay.topUpReserve({ value }));
+    const ok = await tx.runTx(() => relay.topUpReserve({ value }));
     if (ok) {
       await relayData.refresh();
       setTopUp("1");
@@ -52,7 +52,7 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
       return;
     }
 
-    const ok = await tx.runTx(relay.resolveDispute(Number(resolveParcel)));
+    const ok = await tx.runTx(() => relay.resolveDispute(Number(resolveParcel)));
     if (ok) {
       setResolveParcel("");
       await relayData.refresh();
@@ -73,7 +73,7 @@ export default function PlatformDashboard({ wallet, relay, rep, tx, relayData })
       return;
     }
 
-    const ok = await tx.runTx(rep.onboardCarrier(onboardAddress));
+    const ok = await tx.runTx(() => rep.onboardCarrier(onboardAddress));
     if (ok) {
       setOnboardAddress("");
       await relayData.refresh();

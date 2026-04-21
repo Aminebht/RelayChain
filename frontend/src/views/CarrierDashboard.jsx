@@ -115,7 +115,7 @@ export default function CarrierDashboard({ wallet, relay, rep, tx, relayData }) 
       available: freshAvailable.toString()
     });
 
-    const ok = await tx.runTx(relay.acceptParcel(parcelId));
+    const ok = await tx.runTx(() => relay.acceptParcel(parcelId));
     if (ok) {
       await relayData.refresh();
     } else {

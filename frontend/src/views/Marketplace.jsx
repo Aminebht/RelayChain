@@ -79,7 +79,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.postParcel(recipientValue, priceWei, pickupValue, dropoffValue));
+    const ok = await tx.runTx(() => relay.postParcel(recipientValue, priceWei, pickupValue, dropoffValue));
     if (ok) {
       setRecipient("");
       setPrice("0.1");

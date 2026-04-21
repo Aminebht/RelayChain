@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { formatEth, shortAddress } from "../lib/format";
+import { formatEth, shortAddress, statusLabel } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
 
 export default function RecipientDashboard({ wallet, relay, tx, relayData }) {
@@ -52,7 +52,7 @@ export default function RecipientDashboard({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.payForParcel(target.id, { value: target.price }));
+    const ok = await tx.runTx(() => relay.payForParcel(target.id, { value: target.price }));
     if (ok) {
       setPayId("");
       await relayData.refresh();
@@ -78,7 +78,7 @@ export default function RecipientDashboard({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.confirmDelivery(Number(confirmId)));
+    const ok = await tx.runTx(() => relay.confirmDelivery(Number(confirmId)));
     if (ok) {
       setConfirmId("");
       await relayData.refresh();
@@ -104,12 +104,34 @@ export default function RecipientDashboard({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.openDispute(Number(disputeId)));
+    // Status must be Paid (1) or InTransit (2) to open dispute
+    if (target.status === 0) {
+      setActionError("Vous ne pouvez pas ouvrir un litige pour un colis qui n'a pas encore été payé.");
+      return;
+    }
+
+    if (target.status === 1) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const elapsed = nowSec - Number(target.lastActionAt || 0);
+      const remaining = 24 * 60 * 60 - elapsed;
+      if (remaining > 0) {
+        const hours = Math.ceil(remaining / 3600);
+        setActionError(`Le litige sera possible dans environ ${hours} h si aucun porteur n'accepte le colis.`);
+        return;
+      }
+    }
+
+    if (target.status !== 1 && target.status !== 2) {
+      setActionError("Ce colis ne peut pas être mis en litige (statut: " + statusLabel(target.status) + ").");
+      return;
+    }
+
+    const ok = await tx.runTx(() => relay.openDispute(Number(disputeId)));
     if (ok) {
       setDisputeId("");
       await relayData.refresh();
     } else {
-      setActionError(tx.error || "Ouverture du litige échouée.");
+      setActionError(tx.error || "Ouverture du litige impossible pour ce colis.");
     }
   };
 
@@ -177,7 +199,7 @@ export default function RecipientDashboard({ wallet, relay, tx, relayData }) {
 
         <article className="panel">
           <h2>Ouvrir un litige</h2>
-          <p className="muted">Colis perdu, volé ou endommagé</p>
+          <p className="muted">Colis perdu, volé ou endommagé. Si le colis est seulement payé, le litige est disponible après 24 h.</p>
           <form onSubmit={handleDispute} className="form">
             <label>
               ID du colis litigieux

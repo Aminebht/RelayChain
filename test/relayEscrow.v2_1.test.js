@@ -63,7 +63,7 @@ describe("RelayEscrow v2.1", function () {
 
     const parcel = await relay.parcels(parcelId);
     expect(parcel.status).to.equal(3);
-    expect(await relay.platformReserve()).to.equal((price * 5n) / 100n);
+    expect(await relay.platformReserve()).to.equal((price * 10n) / 100n);
   });
 
   it("handles reserve insufficiency with PartialRefund and pending debt", async function () {

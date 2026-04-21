@@ -27,7 +27,7 @@ export default function SenderDashboard({ wallet, relay, tx, relayData }) {
       return;
     }
 
-    const ok = await tx.runTx(relay.openDispute(Number(disputeId)));
+    const ok = await tx.runTx(() => relay.openDispute(Number(disputeId)));
     if (ok) {
       setDisputeId("");
       await relayData.refresh();

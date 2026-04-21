@@ -157,10 +157,10 @@ contract RelayEscrow {
         address carrier = p.carrier;
         if (carrier != address(0)) {
             _unlockCarrierForParcel(parcelId, carrier);
-            reputation.addPoints(carrier, p.price / 10);
+            reputation.addPoints(carrier, p.price / 20);
         }
 
-        uint256 fee = (p.price * 5) / 100;
+        uint256 fee = (p.price * 10) / 100;
         uint256 senderAmount = p.price - fee;
         platformReserve += fee;
 

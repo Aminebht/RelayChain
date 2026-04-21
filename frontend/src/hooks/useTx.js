@@ -5,14 +5,55 @@ export function useTx() {
   const [error, setError] = useState("");
   const [lastHash, setLastHash] = useState("");
 
-  const runTx = async (txPromise) => {
+  const executeTx = async (txFactory) => {
+    let tx;
+    if (typeof txFactory === "function") {
+      const txPromise = txFactory();
+      tx = await txPromise;
+    } else {
+      tx = await txFactory;
+    }
+    setLastHash(tx.hash || "");
+    await tx.wait();
+    return true;
+  };
+
+  const runTx = async (txFactory) => {
     try {
       setLoading(true);
       setError("");
-      const tx = await txPromise;
-      setLastHash(tx.hash || "");
-      await tx.wait();
-      return true;
+
+      // First attempt
+      try {
+        return await executeTx(txFactory);
+      } catch (firstErr) {
+        // Check if it's a nonce, provider sync, or network error that typically resolves on retry
+        const errMsg = (firstErr?.message || firstErr?.shortMessage || "").toLowerCase();
+        const isRetryable =
+          firstErr?.code === "NONCE_EXPIRED" ||
+          firstErr?.code === "REPLACEMENT_UNDERPRICED" ||
+          firstErr?.code === "TRANSACTION_REPLACED" ||
+          firstErr?.code === "TIMEOUT" ||
+          firstErr?.code === "NETWORK_ERROR" ||
+          firstErr?.code === "SERVER_ERROR" ||
+          firstErr?.code === -32000 || // Generic JSON-RPC error (often provider sync)
+          errMsg.includes("nonce") ||
+          errMsg.includes("replacement") ||
+          errMsg.includes("known transaction") ||
+          errMsg.includes("underlying network changed") ||
+          errMsg.includes("could not coalesce") ||
+          errMsg.includes("unknown account") ||
+          errMsg.includes("internal json-rpc error");
+
+        if (isRetryable) {
+          console.log("First transaction attempt failed with retryable error, retrying...", firstErr?.message || firstErr?.code);
+          // Small delay to allow provider state to sync
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return await executeTx(txFactory);
+        }
+        // Not a retryable error, throw to outer catch
+        throw firstErr;
+      }
     } catch (err) {
       console.error("Transaction error:", err);
       console.error("Error details:", {
@@ -32,6 +73,31 @@ export function useTx() {
       // Handle ethers v6 "could not coalesce error"
       if (message.includes("could not coalesce error")) {
         message = "Transaction rejetée. Cause probable: solde insuffisant, gas limit trop bas, ou reversion du contrat.";
+      }
+
+      // Handle generic JSON-RPC errors - try to extract revert reason from data
+      if (message.includes("Internal JSON-RPC error")) {
+        // Try to extract revert reason from various error structures
+        const revertReason =
+          err?.data?.message ||
+          err?.error?.data?.message ||
+          err?.info?.error?.data?.message ||
+          err?.payload?.error?.message ||
+          err?.reason;
+
+        if (revertReason) {
+          // Extract readable part from revert messages
+          const revertMatch = revertReason.match(/reverted with reason string ['"](.+?)['"]/);
+          if (revertMatch) {
+            message = revertMatch[1];
+          } else if (revertReason.includes("execution reverted")) {
+            message = revertReason.replace("execution reverted: ", "").replace("execution reverted", "Contrat rejeté");
+          } else {
+            message = revertReason;
+          }
+        } else {
+          message = "Transaction rejetée par le contrat. Vérifiez les conditions (statut, rôle, solde).";
+        }
       }
 
       // Extract revert reason from Hardhat/ethers errors
