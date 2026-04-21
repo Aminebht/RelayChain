@@ -2,13 +2,6 @@ import { Link, NavLink } from "react-router-dom";
 import { shortAddress } from "../lib/format";
 import { useState, useEffect, useMemo } from "react";
 
-const links = [
-  { to: "/", label: "Marche" },
-  { to: "/sender", label: "Expediteur" },
-  { to: "/carrier", label: "Porteur" },
-  { to: "/platform", label: "Plateforme" },
-  { to: "/audit", label: "Journal" }
-];
 
 export default function Layout({ children, wallet, relayData }) {
   const [isDark, setIsDark] = useState(() => {
@@ -24,8 +17,16 @@ export default function Layout({ children, wallet, relayData }) {
 
   const isPorteur = useMemo(() => {
     if (!wallet.address || !relayData?.parcels) return false;
-    return relayData.parcels.some(
+    const hasDelivered = relayData.parcels.some(
       (p) => p.carrier?.toLowerCase() === wallet.address.toLowerCase()
+    );
+    return hasDelivered;
+  }, [relayData.parcels, wallet.address]);
+
+  const isDestinataire = useMemo(() => {
+    if (!wallet.address || !relayData?.parcels) return false;
+    return relayData.parcels.some(
+      (p) => p.recipient?.toLowerCase() === wallet.address.toLowerCase()
     );
   }, [relayData.parcels, wallet.address]);
 
@@ -56,14 +57,22 @@ export default function Layout({ children, wallet, relayData }) {
         </Link>
         <nav className="nav">
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-            Marche
+            Accueil
+          </NavLink>
+          <NavLink to="/marketplace" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+            Marché
           </NavLink>
           {wallet.isConnected && isExpediteur && (
             <NavLink to="/sender" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-              Expediteur
+              Expéditeur
             </NavLink>
           )}
-          {wallet.isConnected && (
+          {wallet.isConnected && isDestinataire && (
+            <NavLink to="/recipient" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+              Destinataire
+            </NavLink>
+          )}
+          {wallet.isConnected && isPorteur && (
             <NavLink to="/carrier" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
               Porteur
             </NavLink>

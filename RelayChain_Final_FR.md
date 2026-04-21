@@ -601,14 +601,15 @@ cd frontend && npm install && npm start
 
 ### 12.1 Correctifs structurants integres
 
-- **Machine d'etats corrigee** : `Posted -> Paid -> InTransit -> AwaitingNextCarrier -> Delivered`, avec branches `Disputed -> Refunded`.
-- **Double confirmation robuste** : handshake en 2 phases avec acteurs explicitement autorises (sortant + entrant attendu).
+- **Modele simplifie single-carrier** : un seul porteur par colis (suppression des handoffs multi-tronçons).
+- **Machine d'etats corrigee** : `Posted -> Paid -> InTransit -> Delivered`, avec branches `Disputed -> Refunded`.
 - **Pas de finalisation ambigue** : livraison finale uniquement via `confirmDelivery()` par le destinataire.
 - **Verrouillage anti sur-engagement** : points verrouilles par couple `(parcelId, carrier)` et non par simple adresse globale.
-- **Timeouts deterministes** : handoff, attente nouveau porteur, litige owner.
+- **Timeouts deterministes** : attente acceptation porteur (24h), litige owner (30 jours).
 - **Remboursement non bloquant** : reserve insuffisante => remboursement partiel + dette `pendingRefunds` reclamable plus tard.
 - **Paiements securises** : `call` + checks-effects-interactions + `nonReentrant` (plus de `transfer`).
 - **Compteur litiges mensuel realiste** : indexe par mois (`recipient`, `monthIndex`) au lieu d'un compteur cumulatif permanent.
+- **Locations geographiques** : champs `pickupLocation` et `dropoffLocation` pour traçabilite operationnelle.
 
 ### 12.2 Principes economiques v2.1
 
@@ -617,7 +618,8 @@ cd frontend && npm install && npm start
 - `availablePoints = reputation.points(carrier) - totalLockedByCarrier(carrier)`.
 - Onboarding porteur :
   - faucet initial apres verification KYC (ex: `10e18`),
-  - ou seuil colis micro-valeur (`MIN_VALUE_NO_POINTS`) pour premiere livraison.
+  - ou seuil colis micro-valeur (`MIN_VALUE_NO_POINTS = 5e15 = 0.005 ETH`) pour premiere livraison sans garantie.
+- Un seul porteur par colis : simplification UX, pas de handoffs complexes.
 
 ### 12.3 Machine d'etats v2.1
 
@@ -625,19 +627,13 @@ cd frontend && npm install && npm start
 Posted
   -> payForParcel() -> Paid
 Paid
-  -> acceptLeg(firstCarrier) -> InTransit
+  -> acceptParcel(carrier) -> InTransit
 InTransit
-  -> initiateHandoff(outgoing, expectedIncoming, hash) -> InTransit (pending)
-InTransit
-  -> acknowledgeHandoff(expectedIncoming, sameHash) -> AwaitingNextCarrier
-AwaitingNextCarrier
-  -> acceptLeg(nextCarrier) -> InTransit
-AwaitingNextCarrier
   -> confirmDelivery() [recipient] -> Delivered
 
 Branches de securite:
-InTransit / AwaitingNextCarrier -> openDispute() -> Disputed -> resolveDispute() -> Refunded
-InTransit / AwaitingNextCarrier / Disputed -> triggerTimeout() -> resolution automatique selon regles
+Paid (apres 24h sans acceptation) / InTransit -> openDispute() -> Disputed -> resolveDispute() -> Refunded
+Paid / InTransit / Disputed -> triggerTimeout() -> resolution automatique selon regles
 ```
 
 ### 12.4 Smart contract `RelayEscrow.sol` (spec v2.1)
@@ -649,7 +645,6 @@ enum ParcelStatus {
     Posted,
     Paid,
     InTransit,
-    AwaitingNextCarrier,
     Delivered,
     Disputed,
     Refunded
@@ -658,28 +653,18 @@ enum ParcelStatus {
 struct Parcel {
     address sender;
     address recipient;
+    address carrier;               // unique porteur assigne
     uint256 price;                 // wei
+    string pickupLocation;         // lieu de depart (ex: "Tunis, Lac 2")
+    string dropoffLocation;        // lieu arrivee (ex: "Ariana")
     ParcelStatus status;
-    address[] carrierChain;        // historique ordonne
-    uint16 currentHop;
-    bytes32[] photoHashes;
     uint256 createdAt;
     uint256 lastActionAt;
 }
 
-struct HandoffPending {
-    address outgoingCarrier;
-    address expectedIncoming;      // impose, pas libre
-    bytes32 outgoingHash;
-    bytes32 incomingHash;
-    bool outgoingConfirmed;
-    bool incomingConfirmed;
-    uint256 deadline;
-}
-
 mapping(uint256 => Parcel) public parcels;
-mapping(uint256 => HandoffPending) public pendingHandoffs;
 mapping(uint256 => mapping(address => uint256)) public lockedByParcel; // parcelId => carrier => amount
+mapping(address => uint256) public totalLockedByCarrier;
 mapping(address => uint256) public pendingRefunds;
 mapping(address => mapping(uint256 => uint256)) public monthlyDisputeCount; // recipient => monthIndex => count
 
@@ -687,105 +672,103 @@ uint256 public platformReserve;
 uint256 public parcelCount;
 address public platformOwner;
 
-uint256 constant HANDOFF_TIMEOUT = 2 hours;
-uint256 constant NEXT_CARRIER_TIMEOUT = 24 hours;
+uint256 constant CARRIER_ACCEPT_TIMEOUT = 24 hours;
 uint256 constant DISPUTE_TIMEOUT = 30 days;
-uint256 constant MIN_VALUE_NO_POINTS = 5e18;
+uint256 constant MIN_VALUE_NO_POINTS = 5e15;  // 0.005 ETH
 uint256 constant MAX_DISPUTES_PER_MONTH = 3;
 ```
 
 #### Fonctions cles
 
 ```solidity
-function acceptLeg(uint256 parcelId) external nonReentrant {
+function postParcel(
+    address recipient,
+    uint256 price,
+    string calldata pickupLocation,
+    string calldata dropoffLocation
+) external returns (uint256) {
+    require(recipient != address(0), "Recipient invalide");
+    require(price > 0, "Prix invalide");
+    require(bytes(pickupLocation).length > 0, "Depart invalide");
+    require(bytes(dropoffLocation).length > 0, "Destination invalide");
+
+    parcelCount += 1;
+    uint256 parcelId = parcelCount;
+
     Parcel storage p = parcels[parcelId];
-    require(
-        p.status == ParcelStatus.Paid || p.status == ParcelStatus.AwaitingNextCarrier,
-        "Statut invalide"
-    );
+    p.sender = msg.sender;
+    p.recipient = recipient;
+    p.carrier = address(0);
+    p.price = price;
+    p.pickupLocation = pickupLocation;
+    p.dropoffLocation = dropoffLocation;
+    p.status = ParcelStatus.Posted;
+    p.createdAt = block.timestamp;
+    p.lastActionAt = block.timestamp;
+
+    emit ParcelPosted(parcelId, msg.sender, recipient, price);
+    return parcelId;
+}
+
+function acceptParcel(uint256 parcelId) external nonReentrant {
+    Parcel storage p = parcels[parcelId];
+    require(msg.sender != p.recipient, "Recipient interdit");
+    require(msg.sender != p.sender, "Sender interdit");
+    require(p.carrier == address(0), "Deja pris");
+    require(p.status == ParcelStatus.Paid, "Statut invalide");
 
     if (p.price >= MIN_VALUE_NO_POINTS) {
         uint256 total = reputation.getPoints(msg.sender);
-        uint256 locked = _totalLockedByCarrier(msg.sender);
+        uint256 locked = totalLockedByCarrier[msg.sender];
         require(total >= locked, "Incoherence points verrouilles");
         uint256 available = total - locked;
         require(available >= p.price, "Points insuffisants");
+
         lockedByParcel[parcelId][msg.sender] += p.price;
+        totalLockedByCarrier[msg.sender] += p.price;
     }
 
-    p.carrierChain.push(msg.sender);
+    p.carrier = msg.sender;
     p.status = ParcelStatus.InTransit;
     p.lastActionAt = block.timestamp;
-    emit LegAccepted(parcelId, msg.sender, uint16(p.carrierChain.length - 1));
-}
 
-function initiateHandoff(uint256 parcelId, address expectedIncoming, bytes32 photoHash) external {
-    Parcel storage p = parcels[parcelId];
-    require(p.status == ParcelStatus.InTransit, "Pas en transit");
-    require(p.carrierChain.length > 0, "Aucun porteur");
-    address outgoing = p.carrierChain[p.currentHop];
-    require(msg.sender == outgoing, "Seul porteur sortant");
-    require(expectedIncoming != address(0), "Incoming invalide");
-    require(expectedIncoming != outgoing, "Incoming=outgoing interdit");
-
-    HandoffPending storage h = pendingHandoffs[parcelId];
-    require(!h.outgoingConfirmed && !h.incomingConfirmed, "Handoff deja en cours");
-
-    h.outgoingCarrier = outgoing;
-    h.expectedIncoming = expectedIncoming;
-    h.outgoingHash = photoHash;
-    h.outgoingConfirmed = true;
-    h.deadline = block.timestamp + HANDOFF_TIMEOUT;
-    p.lastActionAt = block.timestamp;
-    emit HandoffInitiated(parcelId, outgoing, expectedIncoming, photoHash, h.deadline);
-}
-
-function acknowledgeHandoff(uint256 parcelId, bytes32 photoHash) external {
-    Parcel storage p = parcels[parcelId];
-    HandoffPending storage h = pendingHandoffs[parcelId];
-    require(p.status == ParcelStatus.InTransit, "Pas en transit");
-    require(h.outgoingConfirmed, "Aucune initiation");
-    require(block.timestamp <= h.deadline, "Timeout handoff");
-    require(msg.sender == h.expectedIncoming, "Incoming non autorise");
-    require(!h.incomingConfirmed, "Incoming deja confirme");
-
-    h.incomingHash = photoHash;
-    h.incomingConfirmed = true;
-    require(h.incomingHash == h.outgoingHash, "Hashes divergents");
-
-    p.photoHashes.push(photoHash);
-    p.currentHop += 1;
-
-    address outgoing = h.outgoingCarrier;
-    uint256 locked = lockedByParcel[parcelId][outgoing];
-    if (locked > 0) {
-        lockedByParcel[parcelId][outgoing] = 0;
-    }
-
-    reputation.addPoints(outgoing, p.price / 10);
-    _clearPendingHandoff(parcelId);
-    p.status = ParcelStatus.AwaitingNextCarrier;
-    p.lastActionAt = block.timestamp;
-    emit HandoffConfirmed(parcelId, outgoing, msg.sender, photoHash, block.timestamp);
+    emit ParcelAccepted(parcelId, msg.sender);
 }
 
 function confirmDelivery(uint256 parcelId) external nonReentrant {
     Parcel storage p = parcels[parcelId];
     require(msg.sender == p.recipient, "Seul destinataire");
-    require(p.status == ParcelStatus.AwaitingNextCarrier, "Statut invalide");
+    require(p.status == ParcelStatus.InTransit, "Statut invalide");
 
     p.status = ParcelStatus.Delivered;
     p.lastActionAt = block.timestamp;
+
+    address carrier = p.carrier;
+    if (carrier != address(0)) {
+        _unlockCarrierForParcel(parcelId, carrier);
+        reputation.addPoints(carrier, p.price / 10);
+    }
 
     uint256 fee = (p.price * 5) / 100;
     uint256 senderAmount = p.price - fee;
     platformReserve += fee;
 
-    (bool okSender, ) = payable(p.sender).call{value: senderAmount}("");
-    require(okSender, "Paiement expéditeur echec");
+    _safeTransferETH(p.sender, senderAmount, "Paiement expediteur echec");
 
     emit DeliveryConfirmed(parcelId, p.recipient);
     emit PaymentReleased(parcelId, p.sender, senderAmount, fee);
+}
+
+function _unlockCarrierForParcel(uint256 parcelId, address carrier) internal {
+    uint256 locked = lockedByParcel[parcelId][carrier];
+    if (locked > 0) {
+        lockedByParcel[parcelId][carrier] = 0;
+        if (totalLockedByCarrier[carrier] >= locked) {
+            totalLockedByCarrier[carrier] -= locked;
+        } else {
+            totalLockedByCarrier[carrier] = 0;
+        }
+    }
 }
 ```
 
@@ -796,11 +779,15 @@ function openDispute(uint256 parcelId) external {
     Parcel storage p = parcels[parcelId];
     require(msg.sender == p.recipient, "Seul destinataire");
     require(
-        p.status == ParcelStatus.InTransit || p.status == ParcelStatus.AwaitingNextCarrier,
+        p.status == ParcelStatus.Paid || p.status == ParcelStatus.InTransit,
         "Statut invalide"
     );
 
-    uint256 monthIndex = block.timestamp / 30 days;
+    if (p.status == ParcelStatus.Paid) {
+        require(block.timestamp - p.lastActionAt > CARRIER_ACCEPT_TIMEOUT, "Delai acceptation non atteint");
+    }
+
+    uint256 monthIndex = block.timestamp / 4 weeks;
     uint256 n = monthlyDisputeCount[msg.sender][monthIndex];
     require(n < MAX_DISPUTES_PER_MONTH, "Limite mensuelle atteinte");
     monthlyDisputeCount[msg.sender][monthIndex] = n + 1;
@@ -810,46 +797,39 @@ function openDispute(uint256 parcelId) external {
     emit DisputeOpened(parcelId, msg.sender);
 }
 
-function resolveDispute(uint256 parcelId, uint16 faultyHop) external onlyOwner nonReentrant {
+function resolveDispute(uint256 parcelId) external onlyOwner nonReentrant {
     Parcel storage p = parcels[parcelId];
     require(p.status == ParcelStatus.Disputed, "Pas en litige");
-    require(faultyHop < p.carrierChain.length, "Hop invalide");
+
     p.status = ParcelStatus.Refunded;
     p.lastActionAt = block.timestamp;
 
-    // 1) Destinataire: remboursement depuis escrow du parcel
-    (bool okRecipient, ) = payable(p.recipient).call{value: p.price}("");
-    require(okRecipient, "Remboursement destinataire echec");
+    _safeTransferETH(p.recipient, p.price, "Remboursement destinataire echec");
+    _paySenderFromReserveOrDebt(parcelId, p.sender, p.price);
 
-    // 2) Expediteur: reserve ou dette
-    if (platformReserve >= p.price) {
-        platformReserve -= p.price;
-        (bool okSender, ) = payable(p.sender).call{value: p.price}("");
-        require(okSender, "Remboursement expediteur echec");
-    } else {
-        uint256 partial = platformReserve;
-        uint256 debt = p.price - partial;
-        platformReserve = 0;
-        pendingRefunds[p.sender] += debt;
-        if (partial > 0) {
-            (bool okPartial, ) = payable(p.sender).call{value: partial}("");
-            require(okPartial, "Remboursement partiel echec");
-        }
-        emit PartialRefund(parcelId, p.sender, partial, debt);
+    address faultyCarrier = p.carrier;
+    if (faultyCarrier != address(0)) {
+        _unlockCarrierForParcel(parcelId, faultyCarrier);
+        reputation.deductPoints(faultyCarrier, p.price);
     }
 
-    // 3) Unlock exact par parcel
-    for (uint16 i = 0; i < p.carrierChain.length; i++) {
-        address c = p.carrierChain[i];
-        if (lockedByParcel[parcelId][c] > 0) {
-            lockedByParcel[parcelId][c] = 0;
-        }
-    }
-
-    // 4) Slash fautif
-    address faultyCarrier = p.carrierChain[faultyHop];
-    reputation.deductPoints(faultyCarrier, p.price);
     emit DisputeResolved(parcelId, faultyCarrier, p.price);
+}
+
+function _paySenderFromReserveOrDebt(uint256 parcelId, address sender, uint256 amount) internal {
+    if (platformReserve >= amount) {
+        platformReserve -= amount;
+        _safeTransferETH(sender, amount, "Remboursement expediteur echec");
+    } else {
+        uint256 partialAmount = platformReserve;
+        uint256 debt = amount - partialAmount;
+        platformReserve = 0;
+        pendingRefunds[sender] += debt;
+        if (partialAmount > 0) {
+            _safeTransferETH(sender, partialAmount, "Remboursement partiel echec");
+        }
+        emit PartialRefund(parcelId, sender, partialAmount, debt);
+    }
 }
 
 function claimPendingRefund() external nonReentrant {
@@ -858,8 +838,7 @@ function claimPendingRefund() external nonReentrant {
     require(platformReserve >= amount, "Reserve insuffisante");
     pendingRefunds[msg.sender] = 0;
     platformReserve -= amount;
-    (bool ok, ) = payable(msg.sender).call{value: amount}("");
-    require(ok, "Claim echec");
+    _safeTransferETH(msg.sender, amount, "Claim echec");
     emit RefundClaimed(msg.sender, amount);
 }
 
@@ -877,60 +856,16 @@ function triggerTimeout(uint256 parcelId) external nonReentrant {
     Parcel storage p = parcels[parcelId];
     uint256 elapsed = block.timestamp - p.lastActionAt;
 
-    if (p.status == ParcelStatus.InTransit) {
-        HandoffPending storage h = pendingHandoffs[parcelId];
-        require(h.outgoingConfirmed, "Pas de handoff en attente");
-        require(block.timestamp > h.deadline, "Timeout non atteint");
-
-        // penalite legere du sortant pour no-show du handoff
-        reputation.deductPoints(h.outgoingCarrier, p.price / 20);
-        if (lockedByParcel[parcelId][h.outgoingCarrier] > 0) {
-            lockedByParcel[parcelId][h.outgoingCarrier] = 0;
-        }
-
-        _clearPendingHandoff(parcelId);
-        p.status = ParcelStatus.AwaitingNextCarrier;
-        p.lastActionAt = block.timestamp;
-        emit TimeoutTriggered(parcelId, "handoff", h.outgoingCarrier);
-        return;
-    }
-
-    if (p.status == ParcelStatus.AwaitingNextCarrier) {
-        require(elapsed > NEXT_CARRIER_TIMEOUT, "Timeout non atteint");
-        p.status = ParcelStatus.Refunded;
-        p.lastActionAt = block.timestamp;
-
-        // priorite: proteger l'acheteur si livraison bloquee
-        (bool okRecipient, ) = payable(p.recipient).call{value: p.price}("");
-        require(okRecipient, "Refund destinataire echec");
-
-        emit TimeoutTriggered(parcelId, "nextCarrier", address(0));
-        return;
-    }
-
     if (p.status == ParcelStatus.Disputed) {
         require(elapsed > DISPUTE_TIMEOUT, "Timeout non atteint");
         p.status = ParcelStatus.Refunded;
         p.lastActionAt = block.timestamp;
 
-        // par defaut: remboursement destinataire + dette expediteur si reserve insuffisante
-        (bool okRecipient, ) = payable(p.recipient).call{value: p.price}("");
-        require(okRecipient, "Refund destinataire echec");
+        _safeTransferETH(p.recipient, p.price, "Refund destinataire echec");
+        _paySenderFromReserveOrDebt(parcelId, p.sender, p.price);
 
-        if (platformReserve >= p.price) {
-            platformReserve -= p.price;
-            (bool okSender, ) = payable(p.sender).call{value: p.price}("");
-            require(okSender, "Refund expediteur echec");
-        } else {
-            uint256 partial = platformReserve;
-            uint256 debt = p.price - partial;
-            platformReserve = 0;
-            pendingRefunds[p.sender] += debt;
-            if (partial > 0) {
-                (bool okPartial, ) = payable(p.sender).call{value: partial}("");
-                require(okPartial, "Refund partiel echec");
-            }
-            emit PartialRefund(parcelId, p.sender, partial, debt);
+        if (p.carrier != address(0)) {
+            _unlockCarrierForParcel(parcelId, p.carrier);
         }
 
         emit TimeoutTriggered(parcelId, "dispute", address(0));
@@ -986,23 +921,26 @@ function onboardCarrier(address carrier) external onlyOwner {
 ### 12.6 Evenements v2.1
 
 ```solidity
-event HandoffInitiated(uint256 parcelId, address from, address expectedTo, bytes32 photoHash, uint256 deadline);
-event HandoffConfirmed(uint256 parcelId, address from, address to, bytes32 photoHash, uint256 timestamp);
-event DeliveryConfirmed(uint256 parcelId, address recipient);
-event PaymentReleased(uint256 parcelId, address sender, uint256 senderAmount, uint256 platformFee);
-event DisputeOpened(uint256 parcelId, address by);
-event DisputeResolved(uint256 parcelId, address faultyCarrier, uint256 pointsDeducted);
-event PartialRefund(uint256 parcelId, address sender, uint256 paidNow, uint256 debt);
-event RefundClaimed(address user, uint256 amount);
-event ReserveToppedUp(address owner, uint256 amount, uint256 newReserve);
-event TimeoutTriggered(uint256 parcelId, string timeoutType, address penalized);
+event ParcelPosted(uint256 indexed parcelId, address indexed sender, address indexed recipient, uint256 price);
+event ParcelPaid(uint256 indexed parcelId, address indexed recipient, uint256 amount);
+event ParcelAccepted(uint256 indexed parcelId, address indexed carrier);
+event DeliveryConfirmed(uint256 indexed parcelId, address indexed recipient);
+event PaymentReleased(uint256 indexed parcelId, address indexed sender, uint256 senderAmount, uint256 platformFee);
+event DisputeOpened(uint256 indexed parcelId, address indexed by);
+event DisputeResolved(uint256 indexed parcelId, address indexed faultyCarrier, uint256 pointsDeducted);
+event PartialRefund(uint256 indexed parcelId, address indexed sender, uint256 paidNow, uint256 debt);
+event RefundClaimed(address indexed user, uint256 amount);
+event ReserveToppedUp(address indexed owner, uint256 amount, uint256 newReserve);
+event TimeoutTriggered(uint256 indexed parcelId, string timeoutType, address penalized);
 ```
 
 ### 12.7 Frontend React v2.1 (impacts)
 
 - Dashboard porteur affiche `pointsTotal`, `pointsVerrouilles` et `pointsDisponibles`.
-- Handoff en 2 boutons: `initiateHandoff()` puis `acknowledgeHandoff()` (acteur entrant impose).
+- Liste des colis disponibles avec bouton `acceptParcel()` (un seul porteur par colis, pas de handoffs).
+- Affichage des lieux `pickupLocation` et `dropoffLocation` pour chaque colis.
 - Ecran owner ajoute `topUpReserve()` et visualisation des dettes `pendingRefunds`.
+- Resolution de litige simplifiee : pas de parametre `faultyHop`, le porteur assigne est automatiquement penalise.
 - Ecran audit distingue clairement `Delivered` vs `Refunded`.
 - Ecran litiges montre compteur mensuel `monthlyDisputeCount(recipient, monthIndex)`.
 
@@ -1010,15 +948,15 @@ event TimeoutTriggered(uint256 parcelId, string timeoutType, address penalized);
 
 | Test | Attendu |
 |---|---|
-| Incoming non autorise sur handoff | Revert `Incoming non autorise` |
-| Outgoing tente de confirmer 2 fois | Revert (pas de spoof possible) |
-| Hash outgoing != hash incoming | Revert `Hashes divergents` |
+| Parcel deja accepte | Revert `Deja pris` sur second `acceptParcel()` |
+| Sender/Recipient tente d'accepter | Revert `Sender interdit` / `Recipient interdit` |
 | Double modele livraison impossible | Seule `confirmDelivery()` finalise |
-| Carrier repete sur 2 hops meme parcel | Locks liberes correctement sans underflow |
-| Timeout handoff | Penalite 5%, unlock sortant, statut `AwaitingNextCarrier` |
+| Carrier points insuffisants | Revert `Points insuffisants` pour colis >= 0.005 ETH |
+| Dispute avant timeout acceptation | Revert `Delai acceptation non atteint` (24h) |
 | Timeout dispute | Destinataire rembourse + expediteur reserve/dette |
 | Reserve insuffisante | `PartialRefund` + `pendingRefunds` |
 | `claimPendingRefund()` reserve alimentee | Dette soldee et transfert OK |
 | Compteur litiges mois suivant | Reset naturel via `monthIndex` |
 | Paiements ETH | `call` reussi + garde `nonReentrant` |
+| Event `ParcelAccepted` emis | Verification dans les logs de transaction |
 

@@ -932,3 +932,365 @@ tbody tr:last-child td {
     scroll-behavior: auto !important;
   }
 }
+
+/* Landing Page Styles */
+.landing-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+.landing-hero {
+  text-align: center;
+  margin-bottom: var(--space-6);
+}
+
+.landing-title {
+  font-family: "Fraunces", serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.landing-title .accent {
+  color: var(--brand);
+}
+
+.landing-subtitle {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto var(--space-5);
+  line-height: 1.6;
+}
+
+.landing-connect-prompt {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.connect-btn-large {
+  padding: 0.9rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+  margin-top: var(--space-3);
+}
+
+.connect-btn-large:hover {
+  background: var(--brand-dim);
+}
+
+/* Role Selector Cards */
+.role-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.role-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.role-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-soft);
+  border-color: var(--brand);
+}
+
+.role-primary {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.role-primary:hover {
+  background: var(--brand-dim);
+}
+
+.role-primary .muted,
+.role-primary .role-cta {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.role-secondary {
+  border-color: var(--brand);
+}
+
+.role-tertiary {
+  border-style: dashed;
+}
+
+.role-card h3 {
+  font-family: "Fraunces", serif;
+  font-size: 1.25rem;
+  margin-bottom: var(--space-2);
+}
+
+.role-card p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+  flex-grow: 1;
+}
+
+.role-primary p {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.role-cta {
+  font-weight: 600;
+  color: var(--brand);
+  font-size: 0.95rem;
+}
+
+/* Landing Stats */
+.landing-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4);
+  background: var(--surface-base);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.stat-item {
+  text-align: center;
+  padding: var(--space-3) var(--space-4);
+}
+
+.stat-value {
+  display: block;
+  font-family: "Fraunces", serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.reserve-stat .stat-value {
+  color: var(--status-delivered);
+}
+
+/* How It Works */
+.landing-how-it-works {
+  margin-bottom: var(--space-6);
+}
+
+.landing-how-it-works h2 {
+  font-family: "Fraunces", serif;
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.step {
+  text-align: center;
+  padding: var(--space-4);
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--brand);
+  color: white;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-bottom: var(--space-3);
+}
+
+.step h4 {
+  font-size: 1rem;
+  margin-bottom: var(--space-2);
+}
+
+.step p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Landing Footer */
+.landing-footer {
+  text-align: center;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.audit-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color var(--duration-fast) ease;
+}
+
+.audit-link:hover {
+  color: var(--brand);
+}
+
+/* Empty State Improvements */
+.empty-state {
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border);
+}
+
+.empty-state h2 {
+  font-family: "Fraunces", serif;
+  margin-bottom: var(--space-3);
+}
+
+.empty-copy {
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+}
+
+.address-display {
+  display: inline-block;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-base);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+/* Benefit List (Carrier Onboarding) */
+.benefit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.benefit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.benefit-item h4 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.benefit-item p {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* Panel Variants */
+.panel-success {
+  border-color: var(--status-delivered);
+}
+
+.panel-success h2 {
+  color: var(--status-delivered);
+}
+
+/* Info Section */
+.info-section {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+}
+
+/* Compact Parcel Table */
+.compact-table th,
+.compact-table td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* Compact Parcel List */
+.compact-parcel-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.compact-parcel-item {
+  padding: var(--space-3);
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.compact-parcel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.compact-parcel-id {
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.compact-parcel-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Responsive Landing */
+@media (max-width: 640px) {
+  .landing-container {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .role-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-stats {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+}

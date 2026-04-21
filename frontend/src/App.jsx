@@ -1,7 +1,9 @@
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
+import LandingPage from "./views/LandingPage";
 import Marketplace from "./views/Marketplace";
 import SenderDashboard from "./views/SenderDashboard";
+import RecipientDashboard from "./views/RecipientDashboard";
 import CarrierDashboard from "./views/CarrierDashboard";
 import PlatformDashboard from "./views/PlatformDashboard";
 import AuditLog from "./views/AuditLog";
@@ -35,8 +37,10 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/" element={<Marketplace      {...sharedProps} />} />
-        <Route path="/sender" element={<SenderDashboard  {...sharedProps} />} />
+        <Route path="/" element={<LandingPage {...sharedProps} />} />
+        <Route path="/marketplace" element={<Marketplace {...sharedProps} />} />
+        <Route path="/sender" element={<SenderDashboard {...sharedProps} />} />
+        <Route path="/recipient" element={<RecipientDashboard {...sharedProps} />} />
         <Route path="/carrier" element={<CarrierDashboard {...sharedProps} />} />
         <Route path="/platform" element={<PlatformDashboard {...sharedProps} />} />
         <Route path="/audit" element={<AuditLog relay={relay} rep={rep} />} />

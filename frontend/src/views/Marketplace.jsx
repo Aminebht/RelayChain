@@ -1,27 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { formatCount, toWei, formatEth, shortAddress } from "../lib/format";
+import { formatCount, toWei, formatEth } from "../lib/format";
 import ParcelTable from "../components/ParcelTable";
-
-async function getBalance(provider, address) {
-  if (!provider || !address) return 0n;
-  try {
-    return await provider.getBalance(address);
-  } catch {
-    return 0n;
-  }
-}
 
 export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [recipient, setRecipient] = useState("");
   const [price, setPrice] = useState("0.1");
   const [pickupLocation, setPickupLocation] = useState("");
   const [dropoffLocation, setDropoffLocation] = useState("");
-  const [payId, setPayId] = useState("");
-  const [completeId, setCompleteId] = useState("");
-  const [disputeId, setDisputeId] = useState("");
   const [formError, setFormError] = useState("");
-  const [payError, setPayError] = useState("");
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
@@ -102,84 +89,6 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     }
   };
 
-  const handlePay = async (e) => {
-    e.preventDefault();
-    setPayError("");
-
-    if (!relay || !payId) {
-      setPayError("Contrat indisponible ou ID manquant.");
-      return;
-    }
-
-    if (!/^\d+$/.test(payId)) {
-      setPayError("ID invalide. Utilisez un entier positif.");
-      return;
-    }
-
-    const target = relayData.parcels.find((p) => p.id === Number(payId));
-    if (!target) {
-      setPayError("Aucun colis trouve pour cet ID.");
-      return;
-    }
-
-    if (target.status !== 0) {
-      setPayError(`Statut invalide. Ce colis est "${["Publie", "Paye", "En transit", "Livre", "En litige", "Rembourse"][target.status]}" et ne peut plus etre paye.`);
-      return;
-    }
-
-    if (!wallet.address) {
-      setPayError("Connectez votre wallet d'abord.");
-      return;
-    }
-
-    if (target.recipient?.toLowerCase() !== wallet.address.toLowerCase()) {
-      setPayError(`Seul le destinataire (${shortAddress(target.recipient)}) peut payer ce colis.`);
-      return;
-    }
-
-    console.log("Paying for parcel:", {
-      id: target.id,
-      price: target.price.toString(),
-      sender: target.sender,
-      recipient: target.recipient,
-      status: target.status,
-      wallet: wallet.address
-    });
-
-    const balance = await getBalance(wallet.provider, wallet.address);
-    if (balance < target.price) {
-      setPayError(`Solde insuffisant. Vous avez ${formatEth(balance)} mais le colis coûte ${formatEth(target.price)}.`);
-      return;
-    }
-
-    const ok = await tx.runTx(relay.payForParcel(target.id, { value: target.price }));
-    if (ok) {
-      setPayId("");
-      await relayData.refresh();
-    } else {
-      setPayError("Paiement echoue. Verifiez le montant et reessayez.");
-    }
-  };
-
-  const handleComplete = async (e) => {
-    e.preventDefault();
-    if (!relay || !completeId) return;
-    const ok = await tx.runTx(relay.confirmDelivery(Number(completeId)));
-    if (ok) {
-      setCompleteId("");
-      await relayData.refresh();
-    }
-  };
-
-  const handleDispute = async (e) => {
-    e.preventDefault();
-    if (!relay || !disputeId) return;
-    const ok = await tx.runTx(relay.openDispute(Number(disputeId)));
-    if (ok) {
-      setDisputeId("");
-      await relayData.refresh();
-    }
-  };
 
   return (
     <>
@@ -290,55 +199,38 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
         </article>
 
         <article className="panel">
-          <h2>Actions Destinataire</h2>
-          <p className="muted">Sécurisez l'achat ou confirmez la réception finale.</p>
+          <h2>Informations</h2>
+          <p className="muted">Comment fonctionne RelayChain</p>
           
-          <div className="info-box" style={{ marginBottom: "16px" }}>
-            <strong style={{ color: "var(--text-primary)" }}>{posted.length}</strong> colis en attente de paiement.
+          <div className="info-box">
+            <strong style={{ color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+              {posted.length} colis disponibles
+            </strong>
+            <p className="muted" style={{ fontSize: "14px", marginBottom: "16px" }}>
+              Les destinataires peuvent payer et suivre leurs colis depuis l'espace Destinataire.
+            </p>
           </div>
 
-          <form onSubmit={handlePay} className="form" style={{ marginBottom: "20px", paddingBottom: "20px", borderBottom: "1px solid var(--border)"}}>
-            <label>
-              1. Payer le Colis (Créer la garantie)
-              <input 
-                value={payId} 
-                onChange={(e) => setPayId(e.target.value)} 
-                placeholder="Ex: 1" 
-              />
-            </label>
-            <button type="submit" disabled={!wallet.isConnected || tx.loading || !payId} style={{ marginTop: "8px" }}>
-              Verrouiller les Fonds
-            </button>
-          </form>
+          <div className="info-section">
+            <h4 style={{ marginBottom: "8px", marginTop: "16px" }}>Pour les expéditeurs</h4>
+            <p className="muted" style={{ fontSize: "14px" }}>
+              Créez un colis avec un destinataire et un prix. Recevez 95% du montant à la livraison.
+            </p>
+          </div>
 
-          <form onSubmit={handleComplete} className="form" style={{ marginBottom: "20px", paddingBottom: "20px", borderBottom: "1px solid var(--border)"}}>
-            <label>
-              2. Confirmer la Réception (Fin)
-              <input 
-                value={completeId} 
-                onChange={(e) => setCompleteId(e.target.value)} 
-                placeholder="Ex: 1" 
-              />
-            </label>
-            <button type="submit" disabled={!wallet.isConnected || tx.loading || !completeId} style={{ marginTop: "8px" }}>
-              J'ai bien reçu ce colis
-            </button>
-          </form>
+          <div className="info-section">
+            <h4 style={{ marginBottom: "8px", marginTop: "16px" }}>Pour les destinataires</h4>
+            <p className="muted" style={{ fontSize: "14px" }}>
+              <a href="/recipient" style={{ color: "var(--accent)" }}>Accédez à l'espace Destinataire →</a>
+            </p>
+          </div>
 
-          <form onSubmit={handleDispute} className="form">
-            <label>
-              3. Déclarer un Litige (Colis perdu/volé)
-              <input 
-                value={disputeId} 
-                onChange={(e) => setDisputeId(e.target.value)} 
-                placeholder="Ex: 1" 
-              />
-            </label>
-            <button type="submit" disabled={!wallet.isConnected || tx.loading || !disputeId} className="btn-danger" style={{ marginTop: "8px" }}>
-              ⚠️ Bloquer le Colis
-            </button>
-          </form>
-          {payError && <div className="error-banner error-banner-inline">{payError}</div>}
+          <div className="info-section">
+            <h4 style={{ marginBottom: "8px", marginTop: "16px" }}>Pour les porteurs</h4>
+            <p className="muted" style={{ fontSize: "14px" }}>
+              <a href="/carrier" style={{ color: "var(--accent)" }}>Devenez livreur →</a>
+            </p>
+          </div>
         </article>
 
         <article className="panel span-all">

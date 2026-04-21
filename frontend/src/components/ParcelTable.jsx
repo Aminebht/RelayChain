@@ -1,11 +1,30 @@
 import { formatCount, formatEth, shortAddress, statusLabel } from "../lib/format";
 
-export default function ParcelTable({ parcels, onAccept, isConnected, isLoading }) {
+export default function ParcelTable({ parcels, onAccept, isConnected, isLoading, compact }) {
   if (!parcels || !parcels.length) {
     return (
       <div className="empty-state">
         Aucun colis pour le moment.
       </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="compact-parcel-list">
+      {parcels.map((p) => (
+        <div key={p.id} className="compact-parcel-item">
+          <div className="compact-parcel-header">
+            <span className="compact-parcel-id">#{p.id}</span>
+            <span className={`status status-${p.status}`}>{statusLabel(p.status)}</span>
+          </div>
+          <div className="compact-parcel-details">
+            <span>{formatEth(p.price)} ETH</span>
+            <span>{p.pickupLocation || "-"} → {p.dropoffLocation || "-"}</span>
+          </div>
+        </div>
+      ))}
+    </div>
     );
   }
 
