@@ -19,6 +19,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
   const [dropoffLocation, setDropoffLocation] = useState("");
   const [payId, setPayId] = useState("");
   const [completeId, setCompleteId] = useState("");
+  const [disputeId, setDisputeId] = useState("");
   const [formError, setFormError] = useState("");
   const [payError, setPayError] = useState("");
   const [accounts, setAccounts] = useState([]);
@@ -170,6 +171,16 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
     }
   };
 
+  const handleDispute = async (e) => {
+    e.preventDefault();
+    if (!relay || !disputeId) return;
+    const ok = await tx.runTx(relay.openDispute(Number(disputeId)));
+    if (ok) {
+      setDisputeId("");
+      await relayData.refresh();
+    }
+  };
+
   return (
     <>
       <div className="page-header">
@@ -300,7 +311,7 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
             </button>
           </form>
 
-          <form onSubmit={handleComplete} className="form">
+          <form onSubmit={handleComplete} className="form" style={{ marginBottom: "20px", paddingBottom: "20px", borderBottom: "1px solid var(--border)"}}>
             <label>
               2. Confirmer la Réception (Fin)
               <input 
@@ -311,6 +322,20 @@ export default function Marketplace({ wallet, relay, tx, relayData }) {
             </label>
             <button type="submit" disabled={!wallet.isConnected || tx.loading || !completeId} style={{ marginTop: "8px" }}>
               J'ai bien reçu ce colis
+            </button>
+          </form>
+
+          <form onSubmit={handleDispute} className="form">
+            <label>
+              3. Déclarer un Litige (Colis perdu/volé)
+              <input 
+                value={disputeId} 
+                onChange={(e) => setDisputeId(e.target.value)} 
+                placeholder="Ex: 1" 
+              />
+            </label>
+            <button type="submit" disabled={!wallet.isConnected || tx.loading || !disputeId} className="btn-danger" style={{ marginTop: "8px" }}>
+              ⚠️ Bloquer le Colis
             </button>
           </form>
           {payError && <div className="error-banner error-banner-inline">{payError}</div>}
